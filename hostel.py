@@ -12,7 +12,6 @@ st.set_page_config(page_title="Hostel Pro Cloud", layout="wide", page_icon="🏨
 @st.cache_resource
 def init_connection():
     try:
-        # Puxa o conteúdo do JSON que colaste nos Secrets
         json_info = st.secrets["gcp_service_account"]["json_content"]
         creds_dict = json.loads(json_info)
         
@@ -32,13 +31,12 @@ client = init_connection()
 
 if client:
     try:
-        # SUBSTITUA PELO NOME DA SUA PLANILHA NO GOOGLE DRIVE
+        # Usando o nome da sua planilha que já está funcionando
         spreadsheet = client.open("hostel-db")
         ws_reservas = spreadsheet.worksheet("reservas")
         ws_despesas = spreadsheet.worksheet("despesas")
     except Exception as e:
         st.error(f"Erro ao abrir a planilha: {e}")
-        st.info("Dica: Partilhe a planilha com o e-mail do Service Account que está no seu JSON.")
         st.stop()
 else:
     st.stop()
@@ -62,7 +60,8 @@ if menu == "Reservas":
         st.subheader("Nova Reserva")
         with st.form("form_reserva", clear_on_submit=True):
             nome = st.text_input("Nome do Hóspede")
-            quarto = st.selectbox("Quarto", ["Dormitório A", "Dormitório B", "Suite 1", "Suite 2"])
+            # --- NOMES DOS QUARTOS ATUALIZADOS AQUI ---
+            quarto = st.selectbox("Quarto", ["Master", "Studio", "Triplo"])
             checkin = st.date_input("Check-in")
             checkout = st.date_input("Check-out")
             valor = st.number_input("Valor Total (R$)", min_value=0.0)
@@ -70,7 +69,7 @@ if menu == "Reservas":
             if st.form_submit_button("Guardar Reserva"):
                 novo_id = int(datetime.now().timestamp())
                 ws_reservas.append_row([novo_id, nome, quarto, str(checkin), str(checkout), valor])
-                st.success("Reserva guardada com sucesso!")
+                st.success(f"Reserva para {quarto} guardada com sucesso!")
                 st.rerun()
 
     with col2:
@@ -107,8 +106,24 @@ elif menu == "Agenda":
     st.header("📅 Agenda de Ocupação")
     df_res = get_data(ws_reservas)
     if not df_res.empty:
-        # Visualização simples em tabela ordenada por data
+        # Ordenar por data de check-in
         df_sorted = df_res.sort_values(by="checkin")
-        st.table(df_sorted[['checkin', 'checkout', 'nome', 'quarto']])
+        
+        # Filtro rápido por quarto
+        filtro_quarto = st.multiselect("Filtrar por Quarto:", ["Master", "Studio", "Triplo"], default=["Master", "Studio", "Triplo"])
+        df_filtrado = df_sorted[df_sorted['quarto'].isin(filtro_quarto)]
+        
+        st.dataframe(df_filtrado[['checkin', 'checkout', 'nome', 'quarto']], use_container_width=True)
     else:
         st.info("Sem reservas registadas.")
+
+# --- MÓDULO DESPESAS ---
+elif menu == "Despesas":
+    st.header("💸 Gestão de Despesas")
+    with st.form("form_despesa", clear_on_submit=True):
+        tipo = st.text_input("Descrição da Despesa (ex: Luz, Limpeza)")
+        valor_d = st.number_input("Valor (R$)", min_value=0.0)
+        if st.form_submit_button("Registrar Gasto"):
+            ws_despesas.append_row([int(datetime.now().timestamp()), tipo, valor_d])
+            st.success("Despesa anotada!")
+            st.rerun()
