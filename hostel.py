@@ -47,20 +47,24 @@ def get_data(worksheet):
 # --- FUNÇÃO POP-UP (DIALOG) ---
 @st.dialog("Detalhes da Reserva")
 def detalhes_reserva(event_info):
-    # O event_info traz os dados do dicionário 'calendar_events'
     st.write(f"### {event_info['title']}")
-    st.write("---")
-    st.write(f"**📅 Início:** {event_info['start']}")
-    st.write(f"**🏁 Fim:** {event_info['end']}")
+    st.divider()
     
-    # Se quiser exibir mais dados que não estão no título, 
-    # você pode passar metadados extras no dicionário do evento.
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write(f"**📅 Check-in:** \n{event_info['start']}")
+    with col2:
+        st.write(f"**🏁 Check-out:** \n{event_info['end']}")
+    
     if "extendedProps" in event_info:
         props = event_info["extendedProps"]
-        st.write(f"**👤 Hóspedes:** {props.get('hospedes', 'N/A')}")
-        st.write(f"**💰 Valor Total:** R$ {props.get('total', 0):,.2f}")
+        st.write("---")
+        st.markdown(f"**👤 Hóspedes:** {props.get('hospedes', 'N/A')}")
+        st.markdown(f"**💰 Valor Total:** R$ {props.get('total', 0):,.2f}")
     
-    if st.button("Fechar"):
+    st.write(" ")
+    # O botão agora força o rerun para limpar o estado do clique e fechar o modal
+    if st.button("Fechar", use_container_width=True):
         st.rerun()
 
 # --- NAVEGAÇÃO LATERAL ---
@@ -75,6 +79,7 @@ if menu == "Agenda":
     if not df_res.empty:
         calendar_events = []
         for _, row in df_res.iterrows():
+            # Definindo cores
             color = "#3D5AFE"  # Master
             if row['quarto'] == "Studio": color = "#00C853"
             if row['quarto'] == "Triplo": color = "#FF6D00"
@@ -84,7 +89,6 @@ if menu == "Agenda":
                 "start": str(row['entrada']),
                 "end": str(row['saida']),
                 "color": color,
-                # Passamos dados extras para o Pop-up aqui:
                 "extendedProps": {
                     "hospedes": row['hospedes'],
                     "total": row['total']
@@ -99,13 +103,12 @@ if menu == "Agenda":
             },
             "initialView": "dayGridMonth",
             "locale": "pt-br",
-            "selectable": True,
         }
 
-        # Captura o clique no calendário
+        # Renderiza o calendário e captura a interação
         state = calendar(events=calendar_events, options=calendar_options, key='hostel_calendar')
         
-        # Se um evento for clicado, abre o Pop-up
+        # Se clicar em um evento, chama o pop-up
         if state.get("eventClick"):
             detalhes_reserva(state["eventClick"]["event"])
 
