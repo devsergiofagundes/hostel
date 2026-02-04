@@ -8,37 +8,78 @@ from streamlit_calendar import calendar
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
-    page_title="Hostel Pro | Management", 
+    page_title="Hostel Pro | Elite Suite", 
     layout="wide", 
     page_icon="🏨",
     initial_sidebar_state="expanded"
 )
 
-# --- CSS PROFISSIONAL ---
+# --- INJEÇÃO DE CSS DE ALTO NÍVEL ---
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        background-color: #F4F7FE;
+    }
+
+    /* Ajuste de Texto nas Métricas (CORREÇÃO DO ERRO DE VISIBILIDADE) */
+    [data-testid="stMetricValue"] {
+        color: #1B254B !important;
+        font-size: 24px !important;
+        font-weight: 700 !important;
+    }
+    [data-testid="stMetricLabel"] {
+        color: #A3AED0 !important;
+        font-size: 14px !important;
+        font-weight: 600 !important;
+    }
+    
+    /* Card de Métrica Estilizado */
     div[data-testid="stMetric"] {
-        background-color: #ffffff;
-        border-radius: 12px;
-        padding: 15px !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        border: 1px solid #edf2f7;
+        background-color: white;
+        border-radius: 20px;
+        padding: 20px !important;
+        box-shadow: 0px 45px 80px rgba(0, 0, 0, 0.02);
+        border: 1px solid #E9EDF7;
     }
+
+    /* Estilização da Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #111C44;
+        border-right: 1px solid #1B254B;
+    }
+    [data-testid="stSidebar"] section[data-testid="stSidebarNav"] {
+        background-color: transparent;
+    }
+    
+    /* Botões Premium */
     .stButton>button {
-        border-radius: 8px;
-        background: linear-gradient(135deg, #3D5AFE 0%, #2A3EB1 100%);
-        color: white; font-weight: 600; width: 100%;
+        border-radius: 12px;
+        background: #4318FF;
+        color: white;
+        border: none;
+        padding: 0.6rem 1rem;
+        font-weight: 700;
+        transition: 0.3s;
     }
+    .stButton>button:hover {
+        background: #3311CC;
+        box-shadow: 0px 4px 20px rgba(67, 24, 255, 0.4);
+    }
+
+    /* Esconder elementos desnecessários */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- ESTADO GLOBAL ---
+# --- INICIALIZAÇÃO E CONEXÃO ---
 if "data_filtro" not in st.session_state:
     st.session_state.data_filtro = datetime.now().replace(day=1)
 
-# --- CONEXÃO ---
 @st.cache_resource
 def init_connection():
     try:
@@ -57,46 +98,39 @@ else: st.stop()
 
 def get_data_safe(ws):
     df = pd.DataFrame(ws.get_all_records())
-    # Normaliza nomes de colunas: remove espaços, acentos e põe em minúsculo
     df.columns = df.columns.str.strip().str.lower().str.normalize('NFKD').str.encode('ascii', errors='ignore').str.decode('utf-8')
     return df
 
 # --- UI COMPONENTS ---
-def seletor_mes_pro():
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col1:
-        if st.button("⬅️", key="prev"):
-            st.session_state.data_filtro -= pd.DateOffset(months=1)
-            st.rerun()
-    with col2:
-        st.markdown(f"<h4 style='text-align: center;'>{st.session_state.data_filtro.strftime('%B / %Y').upper()}</h4>", unsafe_allow_html=True)
-    with col3:
-        if st.button("➡️", key="next"):
-            st.session_state.data_filtro += pd.DateOffset(months=1)
-            st.rerun()
+def seletor_periodo():
+    with st.container():
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c1:
+            if st.button("⬅️ Anterior", key="p"):
+                st.session_state.data_filtro -= pd.DateOffset(months=1)
+                st.rerun()
+        with c2:
+            st.markdown(f"<h3 style='text-align: center; color: #1B254B; margin:0;'>{st.session_state.data_filtro.strftime('%B %Y').upper()}</h3>", unsafe_allow_html=True)
+        with c3:
+            if st.button("Próximo ➡️", key="n"):
+                st.session_state.data_filtro += pd.DateOffset(months=1)
+                st.rerun()
+    st.write("")
 
-@st.dialog("Detalhes")
-def detalhes_reserva(event_info):
-    st.markdown(f"## {event_info['title']}")
-    st.divider()
-    if "extendedProps" in event_info:
-        p = event_info["extendedProps"]
-        c1, c2 = st.columns(2)
-        c1.metric("Hóspedes", p.get('hospedes'))
-        c2.metric("Total", f"R$ {p.get('total', 0):,.2f}")
-    if st.button("Fechar"): st.rerun()
-
-# --- SIDEBAR ---
+# --- SIDEBAR PROFISSIONAL ---
 with st.sidebar:
-    st.markdown("### 🏨 HOSTEL PRO")
-    menu = st.radio("NAVEGAÇÃO", ["Dashboard", "Agenda", "Reservas", "Despesas"])
+    st.markdown("<h1 style='color: white; font-size: 22px; text-align: center;'>HOSTEL PRO</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #707EAE; text-align: center; font-size: 12px;'>SISTEMA DE GESTÃO ELITE</p>", unsafe_allow_html=True)
+    st.divider()
+    menu = st.radio("NAVEGAÇÃO", ["💰 Dashboard", "📅 Calendário", "📋 Reservas", "💸 Despesas"])
 
 m, a = st.session_state.data_filtro.month, st.session_state.data_filtro.year
 
-# --- DASHBOARD ---
-if menu == "Dashboard":
-    st.title("💰 Financeiro")
-    seletor_mes_pro()
+# --- DASHBOARD ELITE ---
+if menu == "💰 Dashboard":
+    st.markdown("<h2 style='color: #1B254B;'>Visão Geral Financeira</h2>", unsafe_allow_html=True)
+    seletor_periodo()
+    
     df_r = get_data_safe(ws_reservas)
     df_d = get_data_safe(ws_despesas)
     
@@ -110,55 +144,67 @@ if menu == "Dashboard":
         df_d['data'] = pd.to_datetime(df_d['data'])
         gas = df_d[(df_d['data'].dt.month == m) & (df_d['data'].dt.year == a)]['valor'].sum()
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Receitas", f"R$ {rec:,.2f}")
-    c2.metric("Despesas", f"R$ {gas:,.2f}", delta=f"-{gas:,.2f}", delta_color="inverse")
-    c3.metric("Resultado", f"R$ {rec-gas:,.2f}")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("FATURAMENTO BRUTO", f"R$ {rec:,.2f}")
+    col2.metric("CUSTOS OPERACIONAIS", f"R$ {gas:,.2f}")
+    col3.metric("LUCRO LÍQUIDO", f"R$ {rec-gas:,.2f}")
 
-# --- AGENDA ---
-elif menu == "Agenda":
-    st.title("📅 Agenda")
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    c_graf1, c_graf2 = st.columns([2, 1])
+    with c_graf1:
+        st.markdown("<div style='background: white; padding: 20px; border-radius: 20px; border: 1px solid #E9EDF7;'>", unsafe_allow_html=True)
+        st.subheader("Performance Mensal")
+        st.bar_chart({"Receita": rec, "Despesa": gas})
+        st.markdown("</div>", unsafe_allow_html=True)
+
+# --- CALENDÁRIO ---
+elif menu == "📅 Calendário":
+    st.markdown("<h2 style='color: #1B254B;'>Mapa de Reservas</h2>", unsafe_allow_html=True)
     df = get_data_safe(ws_reservas)
     if not df.empty:
         events = []
         for _, r in df.iterrows():
             events.append({
-                "title": f"{r['quarto']} - {r['nome']}",
+                "title": f"{r['quarto'].upper()} | {r['nome']}",
                 "start": str(r['entrada']), "end": str(r['saida']),
-                "extendedProps": {"hospedes": r.get('hospedes', 1), "total": r.get('total', 0)}
+                "backgroundColor": "#4318FF", "borderColor": "#4318FF"
             })
-        state = calendar(events=events, options={"locale":"pt-br"}, key='hostel_calendar')
-        if state.get("eventClick"): detalhes_reserva(state["eventClick"]["event"])
+        calendar(events=events, options={"locale":"pt-br", "headerToolbar": {"left": "prev,next today", "center": "title", "right": "dayGridMonth,dayGridWeek"}})
 
 # --- RESERVAS ---
-elif menu == "Reservas":
-    st.title("📋 Reservas")
-    seletor_mes_pro()
-    with st.expander("➕ NOVA RESERVA"):
+elif menu == "📋 Reservas":
+    st.markdown("<h2 style='color: #1B254B;'>Controle de Hóspedes</h2>", unsafe_allow_html=True)
+    seletor_periodo()
+    
+    with st.expander("✨ ADICIONAR NOVA RESERVA"):
         with st.form("f_res"):
-            nome = st.text_input("Nome")
-            quarto = st.selectbox("Quarto", ["Master", "Studio", "Triplo"])
-            ent = st.date_input("Entrada")
-            sai = st.date_input("Saída")
-            val = st.number_input("Valor", 0.0)
-            if st.form_submit_button("Salvar"):
+            c1, c2 = st.columns(2)
+            nome = c1.text_input("Nome do Hóspede")
+            quarto = c2.selectbox("Quarto", ["Master", "Studio", "Triplo"])
+            ent = c1.date_input("Check-in")
+            sai = c2.date_input("Check-out")
+            val = st.number_input("Valor total da estadia", 0.0)
+            if st.form_submit_button("Confirmar Reserva"):
                 ws_reservas.append_row([int(datetime.now().timestamp()), nome, 1, quarto, str(ent), str(sai), (sai-ent).days, val])
                 st.rerun()
+
     df = get_data_safe(ws_reservas)
     if not df.empty:
         df['entrada'] = pd.to_datetime(df['entrada'])
-        st.dataframe(df[(df['entrada'].dt.month == m) & (df['entrada'].dt.year == a)], use_container_width=True, hide_index=True)
+        df_f = df[(df['entrada'].dt.month == m) & (df['entrada'].dt.year == a)]
+        st.dataframe(df_f, use_container_width=True, hide_index=True)
 
-# --- DESPESAS (ONDE ESTAVA O ERRO) ---
-elif menu == "Despesas":
-    st.title("💸 Despesas")
-    seletor_mes_pro()
-    with st.expander("➕ LANÇAR GASTO"):
+# --- DESPESAS ---
+elif menu == "💸 Despesas":
+    st.markdown("<h2 style='color: #1B254B;'>Gestão de Gastos</h2>", unsafe_allow_html=True)
+    seletor_periodo()
+    with st.expander("➕ REGISTRAR DESPESA"):
         with st.form("f_desp"):
-            d_data = st.date_input("Data")
-            d_desc = st.text_input("Descrição")
-            d_val = st.number_input("Valor", 0.0)
-            if st.form_submit_button("Lançar"):
+            d_data = st.date_input("Data do Gasto")
+            d_desc = st.text_input("Descrição do Item/Serviço")
+            d_val = st.number_input("Valor do Gasto", 0.0)
+            if st.form_submit_button("Registrar na Planilha"):
                 ws_despesas.append_row([int(datetime.now().timestamp()), str(d_data), d_desc, d_val])
                 st.rerun()
     
@@ -166,11 +212,4 @@ elif menu == "Despesas":
     if not df_d.empty:
         df_d['data'] = pd.to_datetime(df_d['data'])
         df_f = df_d[(df_d['data'].dt.month == m) & (df_d['data'].dt.year == a)]
-        
-        # Seleção segura de colunas: usa apenas as que existem de fato
-        colunas_disponiveis = [c for c in ['data', 'descricao', 'valor'] if c in df_f.columns]
-        
-        if not df_f.empty:
-            st.dataframe(df_f[colunas_disponiveis], use_container_width=True, hide_index=True)
-        else:
-            st.info("Nenhuma despesa para este período.")
+        st.dataframe(df_f, use_container_width=True, hide_index=True)
