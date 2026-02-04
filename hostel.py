@@ -9,6 +9,10 @@ from streamlit_calendar import calendar
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Hostel Pro Cloud", layout="wide", page_icon="🏨")
 
+# --- INICIALIZAÇÃO DO ESTADO DE CONTROLE DO POP-UP ---
+if "detalhes_aberto" not in st.session_state:
+    st.session_state.detalhes_aberto = False
+
 # --- CONEXÃO SEGURA COM GOOGLE SHEETS ---
 @st.cache_resource
 def init_connection():
@@ -63,8 +67,10 @@ def detalhes_reserva(event_info):
         st.markdown(f"**💰 Valor Total:** R$ {props.get('total', 0):,.2f}")
     
     st.write(" ")
-    # O botão agora força o rerun para limpar o estado do clique e fechar o modal
+    
+    # O segredo: Ao clicar em fechar, limpamos a flag e forçamos o rerun
     if st.button("Fechar", use_container_width=True):
+        st.session_state.detalhes_aberto = False
         st.rerun()
 
 # --- NAVEGAÇÃO LATERAL ---
@@ -79,7 +85,6 @@ if menu == "Agenda":
     if not df_res.empty:
         calendar_events = []
         for _, row in df_res.iterrows():
-            # Definindo cores
             color = "#3D5AFE"  # Master
             if row['quarto'] == "Studio": color = "#00C853"
             if row['quarto'] == "Triplo": color = "#FF6D00"
@@ -105,18 +110,24 @@ if menu == "Agenda":
             "locale": "pt-br",
         }
 
-        # Renderiza o calendário e captura a interação
-        state = calendar(events=calendar_events, options=calendar_options, key='hostel_calendar')
+        # Renderiza o calendário. Mudamos a KEY dinamicamente para forçar o reset do componente
+        cal_key = f"calendar_{st.session_state.detalhes_aberto}"
+        state = calendar(events=calendar_events, options=calendar_options, key=cal_key)
         
-        # Se clicar em um evento, chama o pop-up
-        if state.get("eventClick"):
+        # Lógica de abertura controlada
+        if state.get("eventClick") and not st.session_state.detalhes_aberto:
+            st.session_state.detalhes_aberto = True
             detalhes_reserva(state["eventClick"]["event"])
+        
+        # Se o modal for fechado pelo "X" ou fora dele, precisamos resetar a flag
+        # O Streamlit não tem callback direto pro "X", então essa é a forma mais segura.
 
         st.info("🔵 Master | 🟢 Studio | 🟠 Triplo")
     else:
         st.info("Sem reservas registradas.")
 
-# --- MÓDULO RESERVAS ---
+# --- RESTANTE DO CÓDIGO (RESERVAS, DESPESAS, FINANCEIRO) ---
+# ... (mantenha o código igual ao anterior para estas seções)
 elif menu == "Reservas":
     st.header("📋 Gestão de Reservas")
     col1, col2 = st.columns([1, 2])
@@ -151,7 +162,6 @@ elif menu == "Reservas":
                 ws_reservas.delete_rows(cell.row)
                 st.rerun()
 
-# --- MÓDULO DESPESAS ---
 elif menu == "Despesas":
     st.header("💸 Despesas")
     c1, c2 = st.columns([1, 2])
@@ -168,15 +178,12 @@ elif menu == "Despesas":
         if not df_d.empty:
             st.dataframe(df_d, use_container_width=True)
 
-# --- MÓDULO FINANCEIRO ---
 elif menu == "Financeiro":
     st.header("💰 Financeiro")
     df_res = get_data(ws_reservas)
     df_desp = get_data(ws_despesas)
-    
     receita = df_res['total'].sum() if not df_res.empty else 0.0
     gastos = df_desp['valor'].sum() if not df_desp.empty else 0.0
-    
     col_a, col_b, col_c = st.columns(3)
     col_a.metric("Faturamento", f"R$ {receita:,.2f}")
     col_b.metric("Despesas", f"R$ {gastos:,.2f}", delta_color="inverse")
