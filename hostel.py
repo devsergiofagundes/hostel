@@ -33,7 +33,7 @@ client = init_connection()
 if client:
     try:
         # SUBSTITUA PELO NOME DA SUA PLANILHA NO GOOGLE DRIVE
-        spreadsheet = client.open("NOME_DA_SUA_PLANILHA")
+        spreadsheet = client.open("hostel-db")
         ws_reservas = spreadsheet.worksheet("reservas")
         ws_despesas = spreadsheet.worksheet("despesas")
     except Exception as e:
