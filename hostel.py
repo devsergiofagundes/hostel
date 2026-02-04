@@ -44,6 +44,25 @@ def get_data(worksheet):
     data = worksheet.get_all_records()
     return pd.DataFrame(data)
 
+# --- FUNÇÃO POP-UP (DIALOG) ---
+@st.dialog("Detalhes da Reserva")
+def detalhes_reserva(event_info):
+    # O event_info traz os dados do dicionário 'calendar_events'
+    st.write(f"### {event_info['title']}")
+    st.write("---")
+    st.write(f"**📅 Início:** {event_info['start']}")
+    st.write(f"**🏁 Fim:** {event_info['end']}")
+    
+    # Se quiser exibir mais dados que não estão no título, 
+    # você pode passar metadados extras no dicionário do evento.
+    if "extendedProps" in event_info:
+        props = event_info["extendedProps"]
+        st.write(f"**👤 Hóspedes:** {props.get('hospedes', 'N/A')}")
+        st.write(f"**💰 Valor Total:** R$ {props.get('total', 0):,.2f}")
+    
+    if st.button("Fechar"):
+        st.rerun()
+
 # --- NAVEGAÇÃO LATERAL ---
 st.sidebar.title("🏨 Hostel Pro")
 menu = st.sidebar.radio("Ir para:", ["Agenda", "Reservas", "Despesas", "Financeiro"])
@@ -56,16 +75,20 @@ if menu == "Agenda":
     if not df_res.empty:
         calendar_events = []
         for _, row in df_res.iterrows():
-            # Cores por quarto
-            color = "#3D5AFE"  # Master (Azul)
-            if row['quarto'] == "Studio": color = "#00C853" # Verde
-            if row['quarto'] == "Triplo": color = "#FF6D00" # Laranja
+            color = "#3D5AFE"  # Master
+            if row['quarto'] == "Studio": color = "#00C853"
+            if row['quarto'] == "Triplo": color = "#FF6D00"
 
             calendar_events.append({
                 "title": f"{row['quarto']} - {row['nome']}",
                 "start": str(row['entrada']),
                 "end": str(row['saida']),
                 "color": color,
+                # Passamos dados extras para o Pop-up aqui:
+                "extendedProps": {
+                    "hospedes": row['hospedes'],
+                    "total": row['total']
+                }
             })
 
         calendar_options = {
@@ -76,12 +99,19 @@ if menu == "Agenda":
             },
             "initialView": "dayGridMonth",
             "locale": "pt-br",
+            "selectable": True,
         }
 
-        calendar(events=calendar_events, options=calendar_options, key='hostel_calendar')
+        # Captura o clique no calendário
+        state = calendar(events=calendar_events, options=calendar_options, key='hostel_calendar')
+        
+        # Se um evento for clicado, abre o Pop-up
+        if state.get("eventClick"):
+            detalhes_reserva(state["eventClick"]["event"])
+
         st.info("🔵 Master | 🟢 Studio | 🟠 Triplo")
     else:
-        st.info("Sem reservas registadas.")
+        st.info("Sem reservas registradas.")
 
 # --- MÓDULO RESERVAS ---
 elif menu == "Reservas":
@@ -102,7 +132,6 @@ elif menu == "Reservas":
                 diarias = (saida - entrada).days
                 if diarias > 0:
                     novo_id = int(datetime.now().timestamp())
-                    # ORDEM: id, nome, hospedes, quarto, entrada, saida, diarias, total
                     ws_reservas.append_row([novo_id, nome, hospedes, quarto, str(entrada), str(saida), diarias, total])
                     st.success("Reserva salva!")
                     st.rerun()
