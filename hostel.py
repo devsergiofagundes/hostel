@@ -9,7 +9,7 @@ from streamlit_calendar import calendar
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Hostel Pro | Elite", layout="wide", page_icon="🏨")
 
-# --- CSS PREMIUM ---
+# --- CSS PREMIUM (BOTÕES E CARDS) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap');
@@ -62,14 +62,6 @@ def delete_by_id(ws, row_id):
             return True
     return False
 
-def update_row(ws, row_id, new_data, cols="H"):
-    data = ws.get_all_records()
-    for i, row in enumerate(data):
-        if str(row.get('id')) == str(row_id):
-            ws.update(f'A{i+2}:{cols}{i+2}', [new_data])
-            return True
-    return False
-
 # --- NAVEGAÇÃO ---
 with st.sidebar:
     st.markdown("<h1 style='text-align: center; color: white;'>HOSTEL PRO</h1>", unsafe_allow_html=True)
@@ -83,9 +75,9 @@ def seletor_periodo():
         if st.button("⬅️ Anterior"): st.session_state.data_filtro -= pd.DateOffset(months=1); st.rerun()
     with c2: st.markdown(f"<h4 style='text-align: center; color: #1B254B;'>{st.session_state.data_filtro.strftime('%B %Y').upper()}</h4>", unsafe_allow_html=True)
     with c3:
-        if st.button("Próximo ➡️"): st.session_state.data_filtro += pd.DateOffset(months=1); st.rerun()
+        if st.button("Próximo ➡️"): st.session_state.data_filtro += pd.Offset(months=1); st.rerun()
 
-# --- DASHBOARD (FIXED) ---
+# --- DASHBOARD COM TAXAS (13% + 5% = 18%) ---
 if menu == "💰 Dashboard":
     st.title("Business Intelligence")
     seletor_periodo()
@@ -93,24 +85,29 @@ if menu == "💰 Dashboard":
     df_r = get_data(ws_res)
     df_d = get_data(ws_des)
     
-    rec, gas = 0.0, 0.0
-    df_mes_r = pd.DataFrame()
-    df_mes_d = pd.DataFrame()
-
+    bruto, taxas, operacionais = 0.0, 0.0, 0.0
+    
     if not df_r.empty:
         df_r['en_dt'] = pd.to_datetime(df_r['entrada'])
         df_mes_r = df_r[(df_r['en_dt'].dt.month == m) & (df_r['en_dt'].dt.year == a)]
-        rec = df_mes_r['total'].sum()
+        bruto = df_mes_r['total'].sum()
+        # Cálculo das taxas: 18% sobre o bruto
+        taxas = bruto * 0.18
 
     if not df_d.empty:
         df_d['dt_dt'] = pd.to_datetime(df_d['data'])
         df_mes_d = df_d[(df_d['dt_dt'].dt.month == m) & (df_d['dt_dt'].dt.year == a)]
-        gas = df_mes_d['valor'].sum()
+        operacionais = df_mes_d['valor'].sum()
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("RECEITA NO PERÍODO", f"R$ {rec:,.2f}")
-    c2.metric("DESPESAS NO PERÍODO", f"R$ {gas:,.2f}", delta=f"-{gas:,.2f}", delta_color="inverse")
-    c3.metric("LUCRO LÍQUIDO", f"R$ {rec-gas:,.2f}")
+    liquido_vendas = bruto - taxas
+    lucro_final = liquido_vendas - operacionais
+
+    # Cartões de Métricas
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("FATURAMENTO BRUTO", f"R$ {bruto:,.2f}")
+    c2.metric("TAXAS (18%)", f"R$ {taxas:,.2f}", delta_color="inverse")
+    c3.metric("GASTOS OPERACIONAIS", f"R$ {operacionais:,.2f}")
+    c4.metric("LUCRO REAL", f"R$ {lucro_final:,.2f}")
 
     st.markdown("---")
     cg1, cg2 = st.columns(2)
@@ -118,73 +115,74 @@ if menu == "💰 Dashboard":
     with cg1:
         st.subheader("Ocupação por Quarto")
         if not df_mes_r.empty:
-            # Lógica para separar quartos múltiplos (Master, Studio) e contar no gráfico
             df_plot = df_mes_r.copy()
             df_plot['quarto'] = df_plot['quarto'].astype(str).str.split(', ')
             df_exploded = df_plot.explode('quarto')
-            # Gráfico de barras por quarto
             st.bar_chart(df_exploded.groupby('quarto')['total'].count())
-        else: st.info("Sem dados para este mês.")
+        else: st.info("Sem reservas neste mês.")
 
     with cg2:
-        st.subheader("Balanço Simples")
-        st.bar_chart(pd.DataFrame({"Valores": [rec, gas]}, index=["Receita", "Despesa"]))
+        st.subheader("Distribuição Financeira")
+        # Gráfico comparando Bruto vs Taxas vs Gastos
+        df_fin = pd.DataFrame({
+            "Categoria": ["Taxas (18%)", "Despesas Oper.", "Lucro Limpo"],
+            "Valores": [taxas, operacionais, lucro_final]
+        })
+        st.bar_chart(df_fin.set_index("Categoria"))
 
-# --- RESERVAS (MÊS ATUAL) ---
+# --- (RESERVAS E DESPESAS SEGUEM A LÓGICA ANTERIOR DE FILTRO POR MÊS) ---
 elif menu == "📋 Reservas":
     st.title("Gestão de Hóspedes")
     seletor_periodo()
     df_r = get_data(ws_res)
     df_r['en_dt'] = pd.to_datetime(df_r['entrada'])
     df_f = df_r[(df_r['en_dt'].dt.month == m) & (df_r['en_dt'].dt.year == a)].copy()
-
-    tab1, tab2 = st.tabs(["➕ Nova Reserva", "⚙️ Gerenciar"])
-    with tab1:
-        with st.form("f_new"):
+    
+    t1, t2 = st.tabs(["➕ Novo", "⚙️ Gerenciar"])
+    with t1:
+        with st.form("new_res"):
             c1, c2 = st.columns(2)
-            n = c1.text_input("Nome")
-            h = c2.number_input("Hóspedes", 1)
-            q = c1.multiselect("Quartos", ["Master", "Studio", "Triplo"], default=["Master"])
-            en = c2.date_input("Check-in")
-            sa = c1.date_input("Check-out")
-            vl = c2.number_input("Total R$", 0.0)
-            if st.form_submit_button("Confirmar"):
-                ws_res.append_row([int(datetime.now().timestamp()), n, h, ", ".join(q), str(en), str(sa), (sa-en).days, vl])
+            nome = c1.text_input("Hóspede")
+            hosp = c2.number_input("Hóspedes", 1)
+            quar = c1.multiselect("Quartos", ["Master", "Studio", "Triplo"], default=["Master"])
+            en = c2.date_input("Entrada")
+            sa = c1.date_input("Saída")
+            vl = c2.number_input("Valor Bruto R$", 0.0)
+            if st.form_submit_button("Salvar"):
+                ws_res.append_row([int(datetime.now().timestamp()), nome, hosp, ", ".join(quar), str(en), str(sa), (sa-en).days, vl])
                 st.rerun()
-    with tab2:
+    with t2:
         if not df_f.empty:
-            id_s = st.selectbox("ID para Editar/Apagar", df_f['id'].tolist())
-            if st.button("🗑️ APAGAR RESERVA", key="delete_res"):
+            id_s = st.selectbox("ID", df_f['id'].tolist())
+            if st.button("🗑️ APAGAR", key="del_res"):
                 delete_by_id(ws_res, id_s); st.rerun()
     
     st.dataframe(df_f.drop(columns=['en_dt']), use_container_width=True, hide_index=True)
 
-# --- DESPESAS (MÊS ATUAL) ---
 elif menu == "💸 Despesas":
     st.title("Gestão Financeira")
     seletor_periodo()
     df_d = get_data(ws_des)
     df_d['dt_dt'] = pd.to_datetime(df_d['data'])
     df_fd = df_d[(df_d['dt_dt'].dt.month == m) & (df_d['dt_dt'].dt.year == a)].copy()
-
-    tab1, tab2 = st.tabs(["➕ Lançar", "⚙️ Gerenciar"])
-    with tab1:
-        with st.form("f_des"):
-            d = st.date_input("Data")
+    
+    t1, t2 = st.tabs(["➕ Novo", "⚙️ Gerenciar"])
+    with t1:
+        with st.form("new_des"):
+            dt = st.date_input("Data")
             ds = st.text_input("Descrição")
-            v = st.number_input("Valor R$", 0.0)
+            vl = st.number_input("Valor R$", 0.0)
             if st.form_submit_button("Lançar"):
-                ws_des.append_row([int(datetime.now().timestamp()), str(d), ds, v])
+                ws_des.append_row([int(datetime.now().timestamp()), str(dt), ds, vl])
                 st.rerun()
-    with tab2:
+    with t2:
         if not df_fd.empty:
-            id_d = st.selectbox("ID para Apagar", df_fd['id'].tolist())
-            if st.button("🗑️ APAGAR DESPESA", key="delete_des"):
+            id_d = st.selectbox("ID", df_fd['id'].tolist())
+            if st.button("🗑️ APAGAR", key="del_des"):
                 delete_by_id(ws_des, id_d); st.rerun()
-
+                
     st.dataframe(df_fd.drop(columns=['dt_dt']), use_container_width=True, hide_index=True)
 
-# --- CALENDÁRIO ---
 elif menu == "📅 Calendário":
     st.title("Mapa de Ocupação")
     df = get_data(ws_res)
