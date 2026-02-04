@@ -83,12 +83,12 @@ if menu == "💰 Dashboard":
     
     rec, gas = 0, 0
     if not df_r.empty:
-        df_r['entrada'] = pd.to_datetime(df_r['entrada'])
-        df_mes_r = df_r[(df_r['entrada'].dt.month == m) & (df_r['entrada'].dt.year == a)]
+        df_r['entrada_dt'] = pd.to_datetime(df_r['entrada'])
+        df_mes_r = df_r[(df_r['entrada_dt'].dt.month == m) & (df_r['entrada_dt'].dt.year == a)]
         rec = df_mes_r['total'].sum()
     if not df_d.empty:
-        df_d['data'] = pd.to_datetime(df_d['data'])
-        gas = df_d[(df_d['data'].dt.month == m) & (df_d['data'].dt.year == a)]['valor'].sum()
+        df_d['data_dt'] = pd.to_datetime(df_d['data'])
+        gas = df_d[(df_d['data_dt'].dt.month == m) & (df_d['data_dt'].dt.year == a)]['valor'].sum()
 
     col1, col2, col3 = st.columns(3)
     col1.metric("RECEITA", f"R$ {rec:,.2f}")
@@ -109,10 +109,11 @@ if menu == "💰 Dashboard":
 elif menu == "📅 Calendário":
     df = get_data_safe(ws_reservas)
     if not df.empty:
-        events = [{"title": f"{r['quarto']} | {r['nome']}", "start": str(r['entrada']), "end": str(r['saida']), "color": "#4318FF"} for _, r in df.iterrows()]
+        # Força a data a ser string pura sem horas para o calendário
+        events = [{"title": f"{r['quarto']} | {r['nome']}", "start": str(r['entrada'])[:10], "end": str(r['saida'])[:10], "color": "#4318FF"} for _, r in df.iterrows()]
         calendar(events=events, options={"locale":"pt-br"})
 
-# --- RESERVAS (CORRIGIDO: HOSPEDES MANUAL) ---
+# --- RESERVAS ---
 elif menu == "📋 Reservas":
     st.markdown("<h2 style='color: #1B254B;'>Gestão de Hóspedes</h2>", unsafe_allow_html=True)
     seletor_periodo()
@@ -120,36 +121,30 @@ elif menu == "📋 Reservas":
         with st.form("f_res"):
             c1, c2 = st.columns(2)
             nome = c1.text_input("Nome do Hóspede")
-            # CAMPO HOSPEDES RESTAURADO
-            num_hospedes = c2.number_input("Quantidade de Hóspedes", min_value=1, value=1, step=1)
-            
+            num_hospedes = c2.number_input("Hóspedes", min_value=1, value=1)
             quartos = c1.multiselect("Quartos", ["Master", "Studio", "Triplo"], default=["Master"])
             ent = c2.date_input("Check-in")
-            
             sai = c1.date_input("Check-out")
             val = c2.number_input("Valor Total", 0.0)
             
             if st.form_submit_button("Confirmar Reserva"):
                 diarias = (sai - ent).days
                 if diarias > 0 and nome and quartos:
+                    # Salva apenas a string da data, sem horas
                     ws_reservas.append_row([
-                        int(datetime.now().timestamp()), 
-                        nome, 
-                        num_hospedes, # VALOR MANUAL SALVO AQUI
-                        ", ".join(quartos), 
-                        str(ent), 
-                        str(sai), 
-                        diarias, 
-                        val
+                        int(datetime.now().timestamp()), nome, num_hospedes, 
+                        ", ".join(quartos), str(ent), str(sai), diarias, val
                     ])
-                    st.success("Reserva salva com sucesso!")
                     st.rerun()
-                else: st.error("Erro: Verifique o nome, quartos e se a saída é posterior à entrada.")
+                else: st.error("Erro nas datas.")
     
     df = get_data_safe(ws_reservas)
     if not df.empty:
-        df['entrada'] = pd.to_datetime(df['entrada'])
-        st.dataframe(df[(df['entrada'].dt.month == m) & (df['entrada'].dt.year == a)], use_container_width=True, hide_index=True)
+        df['entrada_temp'] = pd.to_datetime(df['entrada'])
+        df_f = df[(df['entrada_temp'].dt.month == m) & (df['entrada_temp'].dt.year == a)].copy()
+        # Remove as colunas de data com hora e mantém apenas o texto limpo
+        df_f.drop(columns=['entrada_temp'], inplace=True)
+        st.dataframe(df_f, use_container_width=True, hide_index=True)
 
 # --- DESPESAS ---
 elif menu == "💸 Despesas":
@@ -163,7 +158,10 @@ elif menu == "💸 Despesas":
             if st.form_submit_button("Lançar"):
                 ws_despesas.append_row([int(datetime.now().timestamp()), str(d_data), d_desc, d_val])
                 st.rerun()
+    
     df_d = get_data_safe(ws_despesas)
     if not df_d.empty:
-        df_d['data'] = pd.to_datetime(df_d['data'])
-        st.dataframe(df_d[(df_d['data'].dt.month == m) & (df_d['data'].dt.year == a)], use_container_width=True, hide_index=True)
+        df_d['data_temp'] = pd.to_datetime(df_d['data'])
+        df_f_d = df_d[(df_d['data_temp'].dt.month == m) & (df_d['data_temp'].dt.year == a)].copy()
+        df_f_d.drop(columns=['data_temp'], inplace=True)
+        st.dataframe(df_f_d, use_container_width=True, hide_index=True)
