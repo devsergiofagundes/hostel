@@ -6,23 +6,65 @@ import json
 from datetime import datetime
 from streamlit_calendar import calendar
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
+# --- CONFIGURAÇÃO DA PÁGINA (ESTILO PREMIUM) ---
 st.set_page_config(
-    page_title="Hostel Pro Cloud", 
+    page_title="Hostel Pro | Management", 
     layout="wide", 
     page_icon="🏨",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
-# CSS para melhor visualização em Mobile
+# --- INJEÇÃO DE CSS PROFISSIONAL ---
 st.markdown("""
     <style>
-    [data-testid="stMetricValue"] { font-size: 1.6rem; }
-    .stButton button { width: 100%; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+    
+    html, body, [class*="css"]  {
+        font-family: 'Inter', sans-serif;
+        background-color: #f8f9fa;
+    }
+    
+    /* Estilização dos Cards de Métrica */
+    div[data-testid="stMetric"] {
+        background-color: #ffffff;
+        border-radius: 12px;
+        padding: 15px 20px !important;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        border: 1px solid #edf2f7;
+    }
+    
+    /* Estilização de Botões */
+    .stButton>button {
+        border-radius: 8px;
+        background: linear-gradient(135deg, #3D5AFE 0%, #2A3EB1 100%);
+        color: white;
+        border: none;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(61, 90, 254, 0.3);
+        color: white;
+    }
+
+    /* Tabs e Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #1A202C;
+    }
+    [data-testid="stSidebar"] * {
+        color: white !important;
+    }
+    
+    /* Formulários e Inputs */
+    .stTextInput>div>div>input, .stSelectbox>div>div>div {
+        border-radius: 8px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- INICIALIZAÇÃO DE ESTADO GLOBAL DE DATA ---
+# --- ESTADO GLOBAL ---
 if "data_filtro" not in st.session_state:
     st.session_state.data_filtro = datetime.now().replace(day=1)
 
@@ -34,140 +76,61 @@ def init_connection():
         creds_dict = json.loads(json_info)
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-        client = gspread.authorize(creds)
-        return client
-    except:
-        st.error("Erro ao conectar ao Google Sheets.")
-        return None
+        return gspread.authorize(creds)
+    except: return None
 
 client = init_connection()
 if client:
     spreadsheet = client.open("hostel-db")
     ws_reservas = spreadsheet.worksheet("reservas")
     ws_despesas = spreadsheet.worksheet("despesas")
-else:
-    st.stop()
+else: st.stop()
 
-def get_data(worksheet):
-    return pd.DataFrame(worksheet.get_all_records())
+def get_data(ws): return pd.DataFrame(ws.get_all_records())
 
-# --- COMPONENTE DE SELEÇÃO DE MÊS ---
-def seletor_mes():
+# --- UI COMPONENTS ---
+def seletor_mes_pro():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col1:
         if st.button("⬅️", key="prev"):
             st.session_state.data_filtro -= pd.DateOffset(months=1)
             st.rerun()
     with col2:
-        texto = st.session_state.data_filtro.strftime("%b / %Y").upper()
-        st.markdown(f"<h3 style='text-align: center;'>{texto}</h3>", unsafe_allow_html=True)
+        texto = st.session_state.data_filtro.strftime("%B / %Y").upper()
+        st.markdown(f"<h4 style='text-align: center; color: #2D3748;'>{texto}</h4>", unsafe_allow_html=True)
     with col3:
         if st.button("➡️", key="next"):
             st.session_state.data_filtro += pd.DateOffset(months=1)
             st.rerun()
-    st.divider()
 
-# --- FUNÇÃO POP-UP (DIALOG) ---
-@st.dialog("Detalhes")
+@st.dialog("Detalhes da Reserva")
 def detalhes_reserva(event_info):
-    st.write(f"### {event_info['title']}")
-    st.write(f"📅 **Entrada:** {event_info['start']}")
-    st.write(f"🏁 **Saída:** {event_info['end']}")
+    st.markdown(f"## {event_info['title']}")
+    st.markdown(f"**Check-in:** `{event_info['start']}` | **Check-out:** `{event_info['end']}`")
+    st.divider()
     if "extendedProps" in event_info:
         p = event_info["extendedProps"]
-        st.write(f"👤 **Hóspedes:** {p.get('hospedes')}")
-        st.write(f"💰 **Total:** R$ {p.get('total', 0):,.2f}")
-    if st.button("Fechar", use_container_width=True):
-        st.rerun()
+        c1, c2 = st.columns(2)
+        c1.metric("👤 Hóspedes", p.get('hospedes'))
+        c2.metric("💰 Total", f"R$ {p.get('total', 0):,.2f}")
+    st.write(" ")
+    if st.button("Fechar Janela", use_container_width=True): st.rerun()
 
-# --- NAVEGAÇÃO LATERAL ---
-st.sidebar.title("🏨 Hostel Pro")
-menu = st.sidebar.radio("Menu:", ["Agenda", "Reservas", "Despesas", "Financeiro"])
+# --- SIDEBAR ---
+with st.sidebar:
+    st.markdown("<h2 style='text-align: center;'>HOSTEL PRO</h2>", unsafe_allow_html=True)
+    st.divider()
+    menu = st.radio("NAVEGAÇÃO", ["Dashboard", "Agenda", "Reservas", "Despesas"], label_visibility="collapsed")
+    st.spacer = st.container()
+    st.write(" ")
+    st.caption("v2.5 Professional Cloud")
 
-# --- MÓDULO AGENDA ---
-if menu == "Agenda":
-    st.header("📅 Agenda")
-    df_res = get_data(ws_reservas)
-    if not df_res.empty:
-        events = []
-        for _, r in df_res.iterrows():
-            cor = "#3D5AFE" if r['quarto'] == "Master" else "#00C853" if r['quarto'] == "Studio" else "#FF6D00"
-            events.append({
-                "title": f"{r['quarto']}-{r['nome']}",
-                "start": str(r['entrada']), "end": str(r['saida']), "color": cor,
-                "extendedProps": {"hospedes": r['hospedes'], "total": r['total']}
-            })
-        state = calendar(events=events, options={"locale":"pt-br", "initialView":"dayGridMonth"}, key='hostel_calendar')
-        if state.get("eventClick"):
-            event_id = state["eventClick"]["event"]["title"] + state["eventClick"]["event"]["start"]
-            if "last_id" not in st.session_state or st.session_state.last_id != event_id:
-                st.session_state.last_id = event_id
-                detalhes_reserva(state["eventClick"]["event"])
-        else: st.session_state.last_id = None
+# --- LÓGICA DE MÓDULOS ---
+m, a = st.session_state.data_filtro.month, st.session_state.data_filtro.year
 
-# --- MÓDULO RESERVAS ---
-elif menu == "Reservas":
-    st.header("📋 Gestão de Reservas")
-    seletor_mes()
-    
-    with st.expander("➕ Nova Reserva", expanded=False):
-        with st.form("f_res", clear_on_submit=True):
-            nome = st.text_input("Hóspede")
-            hosp = st.number_input("Hóspedes", 1)
-            quarto = st.selectbox("Quarto", ["Master", "Studio", "Triplo"])
-            ent = st.date_input("Check-in")
-            sai = st.date_input("Check-out")
-            val = st.number_input("Valor Total", 0.0)
-            if st.form_submit_button("Salvar Reserva"):
-                diarias = (sai - ent).days
-                if diarias > 0:
-                    ws_reservas.append_row([int(datetime.now().timestamp()), nome, hosp, quarto, str(ent), str(sai), diarias, val])
-                    st.success("Reserva salva!")
-                    st.rerun()
-                else: st.error("Data de saída inválida.")
-
-    df_res = get_data(ws_reservas)
-    if not df_res.empty:
-        df_res['entrada'] = pd.to_datetime(df_res['entrada'])
-        m, a = st.session_state.data_filtro.month, st.session_state.data_filtro.year
-        df_f = df_res[(df_res['entrada'].dt.month == m) & (df_res['entrada'].dt.year == a)]
-        
-        st.subheader(f"Reservas de {st.session_state.data_filtro.strftime('%B/%Y')}")
-        st.dataframe(df_f, use_container_width=True, hide_index=True)
-        
-        if not df_f.empty:
-            id_del = st.selectbox("Eliminar Reserva (Selecionar ID):", df_f['id'].tolist())
-            if st.button("🗑️ Eliminar Selecionada"):
-                cell = ws_reservas.find(str(id_del))
-                ws_reservas.delete_rows(cell.row)
-                st.rerun()
-
-# --- MÓDULO DESPESAS ---
-elif menu == "Despesas":
-    st.header("💸 Despesas")
-    seletor_mes()
-    with st.expander("➕ Lançar Despesa"):
-        with st.form("f_desp"):
-            d_data = st.date_input("Data")
-            d_desc = st.text_input("Descrição")
-            d_val = st.number_input("Valor", 0.0)
-            if st.form_submit_button("Lançar"):
-                ws_despesas.append_row([int(datetime.now().timestamp()), str(d_data), d_desc, d_val])
-                st.rerun()
-    
-    df_d = get_data(ws_despesas)
-    if not df_d.empty:
-        df_d['data'] = pd.to_datetime(df_d['data'])
-        m, a = st.session_state.data_filtro.month, st.session_state.data_filtro.year
-        df_f = df_d[(df_d['data'].dt.month == m) & (df_d['data'].dt.year == a)]
-        st.dataframe(df_f, use_container_width=True, hide_index=True)
-        st.metric("Total Gasto", f"R$ {df_f['valor'].sum():,.2f}")
-
-# --- MÓDULO FINANCEIRO ---
-elif menu == "Financeiro":
-    st.header("💰 Financeiro")
-    seletor_mes()
-    m, a = st.session_state.data_filtro.month, st.session_state.data_filtro.year
+if menu == "Dashboard":
+    st.title("💰 Visão Financeira")
+    seletor_mes_pro()
     
     df_res = get_data(ws_reservas)
     df_desp = get_data(ws_despesas)
@@ -183,6 +146,67 @@ elif menu == "Financeiro":
         gas = df_desp[(df_desp['data'].dt.month == m) & (df_desp['data'].dt.year == a)]['valor'].sum()
 
     col1, col2, col3 = st.columns(3)
-    col1.metric("Receitas", f"R${rec:,.2f}")
-    col2.metric("Despesas", f"R${gas:,.2f}", delta=-gas)
-    col3.metric("Saldo", f"R${rec-gas:,.2f}")
+    col1.metric("Receitas", f"R$ {rec:,.2f}")
+    col2.metric("Despesas", f"R$ {gas:,.2f}", delta=f"-{gas:,.2f}", delta_color="inverse")
+    col3.metric("Lucro Líquido", f"R$ {rec-gas:,.2f}")
+    
+    st.divider()
+    if rec > 0 or gas > 0:
+        st.subheader("Ocupação vs Gastos")
+        st.area_chart(pd.DataFrame({"Receita": [0, rec], "Despesa": [0, gas]}))
+
+elif menu == "Agenda":
+    st.title("📅 Mapa de Ocupação")
+    df_res = get_data(ws_reservas)
+    if not df_res.empty:
+        events = []
+        for _, r in df_res.iterrows():
+            cor = "#3D5AFE" if r['quarto'] == "Master" else "#00C853" if r['quarto'] == "Studio" else "#FF6D00"
+            events.append({
+                "title": f"{r['quarto']} - {r['nome']}",
+                "start": str(r['entrada']), "end": str(r['saida']), "color": cor,
+                "extendedProps": {"hospedes": r['hospedes'], "total": r['total']}
+            })
+        state = calendar(events=events, options={"locale":"pt-br", "selectable": True}, key='hostel_calendar')
+        if state.get("eventClick"):
+            detalhes_reserva(state["eventClick"]["event"])
+
+elif menu == "Reservas":
+    st.title("📋 Gestão de Hóspedes")
+    seletor_mes_pro()
+    
+    with st.expander("✨ CADASTRAR NOVA RESERVA"):
+        with st.form("f_res", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            nome = c1.text_input("Nome Completo")
+            quarto = c2.selectbox("Quarto", ["Master", "Studio", "Triplo"])
+            ent = c1.date_input("Check-in")
+            sai = c2.date_input("Check-out")
+            val = st.number_input("Valor da Reserva (R$)", 0.0)
+            if st.form_submit_button("Confirmar Reserva"):
+                ws_reservas.append_row([int(datetime.now().timestamp()), nome, 1, quarto, str(ent), str(sai), (sai-ent).days, val])
+                st.rerun()
+
+    df_res = get_data(ws_reservas)
+    if not df_res.empty:
+        df_res['entrada'] = pd.to_datetime(df_res['entrada'])
+        df_f = df_res[(df_res['entrada'].dt.month == m) & (df_res['entrada'].dt.year == a)]
+        st.dataframe(df_f, use_container_width=True, hide_index=True)
+
+elif menu == "Despesas":
+    st.title("💸 Fluxo de Caixa / Despesas")
+    seletor_mes_pro()
+    with st.expander("➕ LANÇAR NOVA DESPESA"):
+        with st.form("f_desp"):
+            d_data = st.date_input("Data do Gasto")
+            d_desc = st.text_input("Descrição / Fornecedor")
+            d_val = st.number_input("Valor (R$)", 0.0)
+            if st.form_submit_button("Registrar Gasto"):
+                ws_despesas.append_row([int(datetime.now().timestamp()), str(d_data), d_desc, d_val])
+                st.rerun()
+    
+    df_d = get_data(ws_despesas)
+    if not df_d.empty:
+        df_d['data'] = pd.to_datetime(df_d['data'])
+        df_f = df_d[(df_d['data'].dt.month == m) & (df_d['data'].dt.year == a)]
+        st.table(df_f[['data', 'descricao', 'valor']])
