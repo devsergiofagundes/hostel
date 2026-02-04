@@ -11,21 +11,18 @@ st.set_page_config(
     page_title="Hostel Pro Cloud", 
     layout="wide", 
     page_icon="🏨",
-    initial_sidebar_state="collapsed" # Melhora a visão inicial no mobile
+    initial_sidebar_state="collapsed"
 )
 
-# CSS para forçar ajustes finos em telas pequenas
+# CSS para melhor visualização em Mobile
 st.markdown("""
     <style>
-    [data-testid="stMetricValue"] { font-size: 1.8rem; }
-    @media (max-width: 640px) {
-        .stButton button { width: 100%; }
-        [data-testid="column"] { width: 100% !important; flex: 1 1 100% !important; }
-    }
+    [data-testid="stMetricValue"] { font-size: 1.6rem; }
+    .stButton button { width: 100%; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- INICIALIZAÇÃO DE ESTADOS ---
+# --- INICIALIZAÇÃO DE ESTADO GLOBAL DE DATA ---
 if "data_filtro" not in st.session_state:
     st.session_state.data_filtro = datetime.now().replace(day=1)
 
@@ -40,7 +37,7 @@ def init_connection():
         client = gspread.authorize(creds)
         return client
     except:
-        st.error("Erro nas credenciais.")
+        st.error("Erro ao conectar ao Google Sheets.")
         return None
 
 client = init_connection()
@@ -53,6 +50,22 @@ else:
 
 def get_data(worksheet):
     return pd.DataFrame(worksheet.get_all_records())
+
+# --- COMPONENTE DE SELEÇÃO DE MÊS ---
+def seletor_mes():
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col1:
+        if st.button("⬅️", key="prev"):
+            st.session_state.data_filtro -= pd.DateOffset(months=1)
+            st.rerun()
+    with col2:
+        texto = st.session_state.data_filtro.strftime("%b / %Y").upper()
+        st.markdown(f"<h3 style='text-align: center;'>{texto}</h3>", unsafe_allow_html=True)
+    with col3:
+        if st.button("➡️", key="next"):
+            st.session_state.data_filtro += pd.DateOffset(months=1)
+            st.rerun()
+    st.divider()
 
 # --- FUNÇÃO POP-UP (DIALOG) ---
 @st.dialog("Detalhes")
@@ -71,21 +84,6 @@ def detalhes_reserva(event_info):
 st.sidebar.title("🏨 Hostel Pro")
 menu = st.sidebar.radio("Menu:", ["Agenda", "Reservas", "Despesas", "Financeiro"])
 
-# --- SELETOR DE MÊS RESPONSIVO ---
-def seletor_mes():
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col1:
-        if st.button("⬅️", key="prev"):
-            st.session_state.data_filtro -= pd.DateOffset(months=1)
-            st.rerun()
-    with col2:
-        texto = st.session_state.data_filtro.strftime("%b/%y").upper()
-        st.markdown(f"<h3 style='text-align: center;'>{texto}</h3>", unsafe_allow_html=True)
-    with col3:
-        if st.button("➡️", key="next"):
-            st.session_state.data_filtro += pd.DateOffset(months=1)
-            st.rerun()
-
 # --- MÓDULO AGENDA ---
 if menu == "Agenda":
     st.header("📅 Agenda")
@@ -99,10 +97,7 @@ if menu == "Agenda":
                 "start": str(r['entrada']), "end": str(r['saida']), "color": cor,
                 "extendedProps": {"hospedes": r['hospedes'], "total": r['total']}
             })
-        
-        # O calendário se adapta à largura do container automaticamente
         state = calendar(events=events, options={"locale":"pt-br", "initialView":"dayGridMonth"}, key='hostel_calendar')
-        
         if state.get("eventClick"):
             event_id = state["eventClick"]["event"]["title"] + state["eventClick"]["event"]["start"]
             if "last_id" not in st.session_state or st.session_state.last_id != event_id:
@@ -112,23 +107,40 @@ if menu == "Agenda":
 
 # --- MÓDULO RESERVAS ---
 elif menu == "Reservas":
-    st.header("📋 Reservas")
-    # No mobile, col1 e col2 ficarão um em cima do outro
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        with st.expander("➕ Nova Reserva", expanded=False):
-            with st.form("f_res"):
-                nome = st.text_input("Hóspede")
-                quarto = st.selectbox("Quarto", ["Master", "Studio", "Triplo"])
-                ent = st.date_input("Check-in")
-                sai = st.date_input("Check-out")
-                val = st.number_input("Valor", 0.0)
-                if st.form_submit_button("Salvar"):
-                    ws_reservas.append_row([int(datetime.now().timestamp()), nome, 1, quarto, str(ent), str(sai), 0, val])
+    st.header("📋 Gestão de Reservas")
+    seletor_mes()
+    
+    with st.expander("➕ Nova Reserva", expanded=False):
+        with st.form("f_res", clear_on_submit=True):
+            nome = st.text_input("Hóspede")
+            hosp = st.number_input("Hóspedes", 1)
+            quarto = st.selectbox("Quarto", ["Master", "Studio", "Triplo"])
+            ent = st.date_input("Check-in")
+            sai = st.date_input("Check-out")
+            val = st.number_input("Valor Total", 0.0)
+            if st.form_submit_button("Salvar Reserva"):
+                diarias = (sai - ent).days
+                if diarias > 0:
+                    ws_reservas.append_row([int(datetime.now().timestamp()), nome, hosp, quarto, str(ent), str(sai), diarias, val])
+                    st.success("Reserva salva!")
                     st.rerun()
-    with col2:
-        df = get_data(ws_reservas)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+                else: st.error("Data de saída inválida.")
+
+    df_res = get_data(ws_reservas)
+    if not df_res.empty:
+        df_res['entrada'] = pd.to_datetime(df_res['entrada'])
+        m, a = st.session_state.data_filtro.month, st.session_state.data_filtro.year
+        df_f = df_res[(df_res['entrada'].dt.month == m) & (df_res['entrada'].dt.year == a)]
+        
+        st.subheader(f"Reservas de {st.session_state.data_filtro.strftime('%B/%Y')}")
+        st.dataframe(df_f, use_container_width=True, hide_index=True)
+        
+        if not df_f.empty:
+            id_del = st.selectbox("Eliminar Reserva (Selecionar ID):", df_f['id'].tolist())
+            if st.button("🗑️ Eliminar Selecionada"):
+                cell = ws_reservas.find(str(id_del))
+                ws_reservas.delete_rows(cell.row)
+                st.rerun()
 
 # --- MÓDULO DESPESAS ---
 elif menu == "Despesas":
@@ -149,15 +161,14 @@ elif menu == "Despesas":
         m, a = st.session_state.data_filtro.month, st.session_state.data_filtro.year
         df_f = df_d[(df_d['data'].dt.month == m) & (df_d['data'].dt.year == a)]
         st.dataframe(df_f, use_container_width=True, hide_index=True)
+        st.metric("Total Gasto", f"R$ {df_f['valor'].sum():,.2f}")
 
 # --- MÓDULO FINANCEIRO ---
 elif menu == "Financeiro":
     st.header("💰 Financeiro")
     seletor_mes()
-    
     m, a = st.session_state.data_filtro.month, st.session_state.data_filtro.year
     
-    # Processamento de dados
     df_res = get_data(ws_reservas)
     df_desp = get_data(ws_despesas)
     
@@ -171,8 +182,7 @@ elif menu == "Financeiro":
         df_desp['data'] = pd.to_datetime(df_desp['data'])
         gas = df_desp[(df_desp['data'].dt.month == m) & (df_desp['data'].dt.year == a)]['valor'].sum()
 
-    # Layout adaptável: métricas que se empilham no mobile
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Receitas", f"R${rec:,.2f}")
-    c2.metric("Despesas", f"R${gas:,.2f}")
-    c3.metric("Saldo", f"R${rec-gas:,.2f}")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Receitas", f"R${rec:,.2f}")
+    col2.metric("Despesas", f"R${gas:,.2f}", delta=-gas)
+    col3.metric("Saldo", f"R${rec-gas:,.2f}")
