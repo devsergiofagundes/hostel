@@ -42,12 +42,10 @@ def get_data(worksheet):
 # --- NAVEGAÇÃO ---
 menu = st.sidebar.radio("Ir para:", ["Agenda", "Reservas", "Despesas", "Financeiro"])
 
-# --- MÓDULO DE RESERVAS ---
+# --- MÓDULO DE RESERVAS (Mantido a ordem correta anterior) ---
 if menu == "Reservas":
     st.header("📋 Gestão de Reservas")
-    
     col1, col2 = st.columns([1, 2])
-    
     with col1:
         st.subheader("Nova Reserva")
         with st.form("form_reserva", clear_on_submit=True):
@@ -60,45 +58,51 @@ if menu == "Reservas":
             
             if st.form_submit_button("Guardar Reserva"):
                 n_diarias = (saida - entrada).days
-                
                 if n_diarias <= 0:
                     st.error("A data de saída deve ser após a entrada.")
                 else:
                     novo_id = int(datetime.now().timestamp())
-                    
-                    # --- ORDEM CORRIGIDA PARA BATER COM SEU CABEÇALHO ---
-                    # 1.id | 2.nome | 3.hospedes | 4.quarto | 5.entrada | 6.saida | 7.diarias | 8.total
-                    nova_linha = [
-                        novo_id,            # id
-                        nome,               # nome
-                        qtd_hospedes,       # hospedes
-                        quarto,             # quarto
-                        str(entrada),       # entrada
-                        str(saida),         # saida
-                        n_diarias,          # diarias
-                        total_valor         # total
-                    ]
-                    
+                    nova_linha = [novo_id, nome, qtd_hospedes, quarto, str(entrada), str(saida), n_diarias, total_valor]
                     ws_reservas.append_row(nova_linha)
-                    st.success(f"Reserva de {nome} salva com sucesso!")
+                    st.success(f"Reserva salva!")
                     st.rerun()
-
     with col2:
-        st.subheader("Lista de Reservas")
         df_res = get_data(ws_reservas)
         if not df_res.empty:
-            # Exibe o DataFrame para conferência
             st.dataframe(df_res, use_container_width=True)
+
+# --- MÓDULO DE DESPESAS (ATUALIZADO COM DATA) ---
+elif menu == "Despesas":
+    st.header("💸 Gestão de Despesas")
+    
+    col_d1, col_d2 = st.columns([1, 2])
+    
+    with col_d1:
+        st.subheader("Registar Gasto")
+        with st.form("form_despesa", clear_on_submit=True):
+            data_despesa = st.date_input("Data do Gasto", value=datetime.now())
+            desc = st.text_input("Descrição (ex: Conta de Luz, Faxina)")
+            valor_d = st.number_input("Valor (R$)", min_value=0.0)
             
-            # Deleção
-            lista_ids = df_res['id'].tolist() if 'id' in df_res.columns else []
-            if lista_ids:
-                res_id_excluir = st.selectbox("Selecionar ID para apagar", lista_ids)
-                if st.button("🗑️ Apagar Reserva"):
-                    cell = ws_reservas.find(str(res_id_excluir))
-                    ws_reservas.delete_rows(cell.row)
-                    st.warning("Reserva eliminada.")
-                    st.rerun()
+            if st.form_submit_button("Salvar Despesa"):
+                id_despesa = int(datetime.now().timestamp())
+                # ORDEM NA PLANILHA: id, data, descricao, valor
+                ws_despesas.append_row([id_despesa, str(data_despesa), desc, valor_d])
+                st.success("Despesa registada!")
+                st.rerun()
+
+    with col_d2:
+        st.subheader("Histórico de Gastos")
+        df_desp = get_data(ws_despesas)
+        if not df_desp.empty:
+            st.dataframe(df_desp, use_container_width=True)
+            
+            # Opção para apagar despesa
+            id_del = st.selectbox("Apagar ID", df_desp.iloc[:, 0].tolist())
+            if st.button("🗑️ Eliminar Gasto"):
+                cell = ws_despesas.find(str(id_del))
+                ws_despesas.delete_rows(cell.row)
+                st.rerun()
 
 # --- MÓDULO FINANCEIRO ---
 elif menu == "Financeiro":
@@ -106,12 +110,12 @@ elif menu == "Financeiro":
     df_res = get_data(ws_reservas)
     df_desp = get_data(ws_despesas)
     
-    faturamento = df_res['total'].sum() if not df_res.empty and 'total' in df_res.columns else 0.0
-    gastos = df_desp['valor'].sum() if not df_desp.empty and 'valor' in df_desp.columns else 0.0
+    faturamento = df_res['total'].sum() if not df_res.empty else 0.0
+    gastos = df_desp['valor'].sum() if not df_desp.empty else 0.0
     
     c1, c2, c3 = st.columns(3)
     c1.metric("Faturamento", f"R$ {faturamento:,.2f}")
-    c2.metric("Despesas", f"R$ {gastos:,.2f}")
+    c2.metric("Despesas", f"R$ {gastos:,.2f}", delta_color="inverse")
     c3.metric("Lucro Líquido", f"R$ {faturamento - gastos:,.2f}")
 
 # --- MÓDULO AGENDA ---
@@ -119,18 +123,4 @@ elif menu == "Agenda":
     st.header("📅 Agenda")
     df_res = get_data(ws_reservas)
     if not df_res.empty:
-        # Mostra colunas específicas para facilitar a leitura da agenda
         st.dataframe(df_res[['entrada', 'saida', 'quarto', 'nome']], use_container_width=True)
-    else:
-        st.info("Nenhuma reserva.")
-
-# --- MÓDULO DESPESAS ---
-elif menu == "Despesas":
-    st.header("💸 Despesas")
-    with st.form("form_despesa", clear_on_submit=True):
-        desc = st.text_input("Descrição")
-        valor_d = st.number_input("Valor", min_value=0.0)
-        if st.form_submit_button("Salvar"):
-            # id, tipo, valor
-            ws_despesas.append_row([int(datetime.now().timestamp()), desc, valor_d])
-            st.rerun()
