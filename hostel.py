@@ -104,10 +104,13 @@ if menu == "💰 Dashboard":
         if not df_mes_r.empty:
             bruto = df_mes_r['total'].sum()
             if 'origem' in df_mes_r.columns:
-                tax_b = df_mes_r[df_mes_r['origem'] == 'Booking']['total'].sum() * 0.18
-                tax_t = df_mes_r[df_mes_r['origem'] == 'Telefone']['total'].sum() * 0.05
-                taxas = tax_b + tax_t
-            else: taxas = bruto * 0.18
+                # Booking: 18%
+                tax_booking = df_mes_r[df_mes_r['origem'] == 'Booking']['total'].sum() * 0.18
+                # Telefone e Whatsapp: Apenas 5%
+                tax_direta = df_mes_r[df_mes_r['origem'].isin(['Telefone', 'Whatsapp'])]['total'].sum() * 0.05
+                taxas = tax_booking + tax_direta
+            else: 
+                taxas = bruto * 0.18
 
     if not df_d.empty:
         df_d['dt_dt'] = pd.to_datetime(df_d['data'])
@@ -155,7 +158,7 @@ elif menu == "📋 Reservas":
             q_sel = st.multiselect("Quartos", ["Master", "Studio", "Triplo"], ["Master"])
             en, sa = st.columns(2)
             ent, sai = en.date_input("Check-in"), sa.date_input("Check-out")
-            origem = st.selectbox("Origem", ["Booking", "Telefone"])
+            origem = st.selectbox("Origem", ["Booking", "Telefone", "Whatsapp"])
             val = st.number_input("Valor Total R$", 0.0)
             if st.form_submit_button("Salvar Reserva"):
                 ws_res.append_row([
@@ -171,13 +174,18 @@ elif menu == "📋 Reservas":
             with st.form("edit_r_form"):
                 nome_e = st.text_input("Nome", value=res_data['nome'])
                 h_e = st.number_input("Hóspedes", min_value=1, value=int(res_data.get('hospedes', 1)))
-                # Converte string da planilha de volta para lista para o multiselect
                 q_atual = str(res_data['quarto']).split(", ")
                 q_e = st.multiselect("Quartos", ["Master", "Studio", "Triplo"], q_atual)
                 en_e, sa_e = st.columns(2)
                 ent_e = en_e.date_input("In", value=pd.to_datetime(res_data['entrada']))
                 sai_e = sa_e.date_input("Out", value=pd.to_datetime(res_data['saida']))
-                origem_e = st.selectbox("Origem", ["Booking", "Telefone"], index=0 if res_data.get('origem') == 'Booking' else 1)
+                
+                # Definir índice correto para o selectbox de origem
+                lista_origens = ["Booking", "Telefone", "Whatsapp"]
+                origem_atual = res_data.get('origem', "Booking")
+                idx_origem = lista_origens.index(origem_atual) if origem_atual in lista_origens else 0
+                
+                origem_e = st.selectbox("Origem", lista_origens, index=idx_origem)
                 val_e = st.number_input("Valor", value=float(res_data['total']))
                 
                 if st.form_submit_button("Atualizar Dados"):
@@ -229,7 +237,7 @@ elif menu == "💸 Despesas":
 
     with t3:
         if not df_fd.empty:
-            id_d_d = st.selectbox("ID para Apagar", df_fd['id'].tolist())
+            id_d_d = st.selectbox("Selecione ID para Apagar", df_fd['id'].tolist())
             if st.button("CONFIRMAR EXCLUSÃO"):
                 delete_by_id(ws_des, id_d_d); st.rerun()
 
