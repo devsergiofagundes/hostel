@@ -9,21 +9,14 @@ from streamlit_calendar import calendar
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Hostel Pro | Elite", layout="wide", page_icon="🏨")
 
-# --- 2. SISTEMA DE LOGIN SEGURO (Via Secrets) ---
+# --- 2. SISTEMA DE LOGIN SEGURO ---
 def check_password():
     if "password_correct" not in st.session_state:
         st.session_state["password_correct"] = False
-
     if st.session_state["password_correct"]:
         return True
-
-    st.markdown("""
-        <div style='text-align: center; padding: 50px;'>
-            <h1>🏨 Hostel Pro | Elite</h1>
-            <p>Acesso restrito ao administrador</p>
-        </div>
-    """, unsafe_allow_html=True)
     
+    st.markdown("<div style='text-align: center; padding: 50px;'><h1>🏨 Hostel Pro | Elite</h1><p>Acesso restrito</p></div>", unsafe_allow_html=True)
     with st.form("login_gate"):
         pwd = st.text_input("Senha de Acesso", type="password")
         if st.form_submit_button("Entrar no Sistema"):
@@ -37,39 +30,19 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- 3. CSS PREMIUM ATUALIZADO ---
+# --- 3. CSS PREMIUM ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap');
     html, body, [class*="css"] { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #F4F7FE; }
-    
-    /* Botões Principais */
-    .stButton>button {
-        background-color: #4318FF !important;
-        color: white !important;
-        border-radius: 10px !important;
-        font-weight: 700 !important;
-        border: none !important;
-        box-shadow: 0px 4px 12px rgba(67, 24, 255, 0.2) !important;
-    }
-    
-    /* Botão de Apagar (Vermelho) */
-    div.stButton > button:contains("APAGAR") {
-        background-color: #FF4B4B !important;
-        box-shadow: 0px 4px 12px rgba(255, 75, 75, 0.2) !important;
-    }
-
+    .stButton>button { background-color: #4318FF !important; color: white !important; border-radius: 10px !important; font-weight: 700 !important; border: none !important; }
     [data-testid="stMetricValue"] { color: #1B254B !important; font-weight: 700 !important; }
     div[data-testid="stMetric"] { background-color: white; border-radius: 16px; padding: 20px !important; box-shadow: 0px 10px 30px rgba(0,0,0,0.03); border: 1px solid #E9EDF7; }
     [data-testid="stSidebar"] { background-color: #111C44; }
-    [data-testid="stSidebar"] * { color: #A3AED0 !important; }
     </style>
     """, unsafe_allow_html=True)
 
 # --- 4. CONEXÃO E FUNÇÕES ---
-if "data_filtro" not in st.session_state:
-    st.session_state.data_filtro = datetime.now().replace(day=1)
-
 @st.cache_resource
 def init_connection():
     try:
@@ -99,7 +72,10 @@ def delete_by_id(ws, row_id):
             return True
     return False
 
-# --- 5. NAVEGAÇÃO E SELETOR ---
+# --- 5. NAVEGAÇÃO ---
+if "data_filtro" not in st.session_state:
+    st.session_state.data_filtro = datetime.now().replace(day=1)
+
 with st.sidebar:
     st.markdown("<h2 style='text-align: center; color: white;'>HOSTEL PRO</h2>", unsafe_allow_html=True)
     menu = st.radio("MENU", ["💰 Dashboard", "📅 Calendário", "📋 Reservas", "💸 Despesas"])
@@ -127,13 +103,21 @@ if menu == "💰 Dashboard":
     seletor_periodo()
     df_r, df_d = get_data(ws_res), get_data(ws_des)
     bruto, taxas, operacionais = 0.0, 0.0, 0.0
-    df_mes_r = pd.DataFrame()
 
     if not df_r.empty:
         df_r['en_dt'] = pd.to_datetime(df_r['entrada'])
         df_mes_r = df_r[(df_r['en_dt'].dt.month == m) & (df_r['en_dt'].dt.year == a)]
         bruto = df_mes_r['total'].sum()
-        taxas = bruto * 0.18
+        
+        # Lógica de Taxas Diferenciadas
+        if 'origem' in df_mes_r.columns:
+            # Booking: 13% comissão + 5% taxa financeira = 18%
+            val_booking = df_mes_r[df_mes_r['origem'] == 'Booking']['total'].sum()
+            # Telefone: 0% comissão + 5% taxa financeira = 5%
+            val_tel = df_mes_r[df_mes_r['origem'] == 'Telefone']['total'].sum()
+            taxas = (val_booking * 0.18) + (val_tel * 0.05)
+        else:
+            taxas = bruto * 0.18
 
     if not df_d.empty:
         df_d['dt_dt'] = pd.to_datetime(df_d['data'])
@@ -144,25 +128,9 @@ if menu == "💰 Dashboard":
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("BRUTO", f"R$ {bruto:,.2f}")
-    c2.metric("TAXAS (18%)", f"R$ {taxas:,.2f}", delta_color="inverse")
+    c2.metric("TAXAS VARIÁVEIS", f"R$ {taxas:,.2f}", delta_color="inverse")
     c3.metric("DESPESAS", f"R$ {operacionais:,.2f}")
     c4.metric("LUCRO REAL", f"R$ {liquido:,.2f}")
-
-    st.markdown("---")
-    cg1, cg2 = st.columns(2)
-    with cg1:
-        st.subheader("Ocupação por Quarto")
-        if not df_mes_r.empty:
-            df_plot = df_mes_r.copy()
-            df_plot['quarto'] = df_plot['quarto'].astype(str).str.split(', ')
-            df_exploded = df_plot.explode('quarto')
-            st.bar_chart(df_exploded.groupby('quarto')['total'].count())
-        else: st.info("Sem dados.")
-    with cg2:
-        st.subheader("Divisão de Custos")
-        if bruto > 0:
-            df_custos = pd.DataFrame({"Valor": [taxas, operacionais, liquido]}, index=["Taxas", "Operacional", "Lucro"])
-            st.bar_chart(df_custos)
 
 elif menu == "📋 Reservas":
     st.title("Gestão de Reservas")
@@ -179,14 +147,16 @@ elif menu == "📋 Reservas":
             en, sa = st.columns(2)
             ent = en.date_input("Check-in")
             sai = sa.date_input("Check-out")
+            origem = st.selectbox("Origem", ["Booking", "Telefone"])
             val = st.number_input("Total Bruto R$", 0.0)
             if st.form_submit_button("Salvar"):
-                ws_res.append_row([int(datetime.now().timestamp()), nome, 1, ", ".join(q), str(ent), str(sai), (sai-ent).days, val])
+                # Salvando com o novo campo 'origem'
+                ws_res.append_row([int(datetime.now().timestamp()), nome, 1, ", ".join(q), str(ent), str(sai), (sai-ent).days, val, origem])
                 st.rerun()
     with t2:
         if not df_f.empty:
             id_s = st.selectbox("Selecione ID para apagar", df_f['id'].tolist())
-            if st.button("🗑️ APAGAR RESERVA SELECIONADA"):
+            if st.button("🗑️ APAGAR RESERVA"):
                 delete_by_id(ws_res, id_s); st.rerun()
     
     st.dataframe(df_f.drop(columns=['en_dt']), use_container_width=True, hide_index=True)
@@ -210,7 +180,7 @@ elif menu == "💸 Despesas":
     with t2:
         if not df_fd.empty:
             id_d = st.selectbox("Selecione ID para apagar", df_fd['id'].tolist())
-            if st.button("🗑️ APAGAR DESPESA SELECIONADA"):
+            if st.button("🗑️ APAGAR DESPESA"):
                 delete_by_id(ws_des, id_d); st.rerun()
 
     st.dataframe(df_fd.drop(columns=['dt_dt']), use_container_width=True, hide_index=True)
