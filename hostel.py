@@ -45,6 +45,28 @@ spreadsheet = client.open("hostel-db")
 ws_res = spreadsheet.worksheet("reservas")
 ws_des = spreadsheet.worksheet("despesas")
 
+# --- FUNÇÕES DE CÁLCULO DE TAXA ---
+def calcular_taxa_reserva(row):
+    """
+    Regra: Se origem for Booking, 18%. 
+    Se Direta, taxa depende da forma de pagamento.
+    """
+    total = float(row.get('total', 0))
+    origem = str(row.get('origem', '')).strip()
+    forma = str(row.get('forma_pgto', '')).strip()
+    
+    if origem == "Booking":
+        return total * 0.18
+    
+    # Taxas para reservas diretas baseadas na forma de pagamento
+    taxas_diretas = {
+        "Credito": 0.05,
+        "Debito": 0.0239,
+        "PIX": 0.0,
+        "Dinheiro": 0.0
+    }
+    return total * taxas_diretas.get(forma, 0.0)
+
 def get_data(ws):
     data = ws.get_all_records()
     if not data: return pd.DataFrame()
@@ -64,7 +86,8 @@ def update_row(ws, row_id, new_data):
     data = ws.get_all_records()
     for i, row in enumerate(data):
         if str(row.get('id')) == str(row_id):
-            ws.update(f'A{i+2}:I{i+2}', [new_data])
+            # Agora a linha tem 10 colunas (incluindo forma_pgto)
+            ws.update(f'A{i+2}:J{i+2}', [new_data])
             return True
     return False
 
@@ -103,9 +126,8 @@ if menu == "💰 Dashboard":
         df_mes_r = df_r[(df_r['en_dt'].dt.month == m) & (df_r['en_dt'].dt.year == a)]
         if not df_mes_r.empty:
             bruto = df_mes_r['total'].sum()
-            tax_b = df_mes_r[df_mes_r['origem'] == 'Booking']['total'].sum() * 0.18
-            tax_d = df_mes_r[df_mes_r['origem'].isin(['Telefone', 'Whatsapp'])]['total'].sum() * 0.05
-            taxas = tax_b + tax_d
+            # Aplica a nova lógica de taxas linha a linha
+            taxas = df_mes_r.apply(calcular_taxa_reserva, axis=1).sum()
 
     if not df_d.empty:
         df_d['dt_dt'] = pd.to_datetime(df_d['data'])
@@ -114,7 +136,6 @@ if menu == "💰 Dashboard":
 
     liquido = bruto - taxas - operacionais
 
-    # MÉTRICAS DO MÊS FECHADO (PROJEÇÃO)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("PROJEÇÃO BRUTO", f"R$ {bruto:,.2f}")
     c2.metric("PROJEÇÃO TAXAS", f"R$ {taxas:,.2f}")
@@ -135,17 +156,15 @@ if menu == "💰 Dashboard":
             fin_df = pd.DataFrame({"Cat": ["Taxas", "Despesas", "Lucro"], "Val": [taxas, operacionais, max(0, liquido)]})
             st.bar_chart(fin_df.set_index("Cat"))
 
-    # --- SEÇÃO RESTAURADA: FINANÇAS ATÉ HOJE ---
     st.markdown("---")
     st.subheader(f"📊 Realizado: 01/{m:02d}/{a} até {date.today().strftime('%d/%m/%Y')}")
-    
     hoje = date.today()
     br_h, tx_h, op_h = 0.0, 0.0, 0.0
 
     if not df_mes_r.empty:
         df_h_r = df_mes_r[df_mes_r['en_dt'].dt.date <= hoje]
         br_h = df_h_r['total'].sum()
-        tx_h = (df_h_r[df_h_r['origem'] == 'Booking']['total'].sum() * 0.18) + (df_h_r[df_h_r['origem'].isin(['Telefone', 'Whatsapp'])]['total'].sum() * 0.05)
+        tx_h = df_h_r.apply(calcular_taxa_reserva, axis=1).sum()
 
     if not df_d.empty:
         df_h_d = df_d[(df_d['dt_dt'].dt.month == m) & (df_d['dt_dt'].dt.year == a) & (df_d['dt_dt'].dt.date <= hoje)]
@@ -165,18 +184,26 @@ elif menu == "📋 Reservas":
         with st.container(border=True):
             mode, data = st.session_state.edit_mode, st.session_state.item_selecionado
             with st.form("form_r"):
-                c1, c2, c3 = st.columns([2, 1, 1])
+                c1, c2, c3, c4 = st.columns([2, 1, 1, 1.5])
                 nome = c1.text_input("Nome", value=data['nome'] if data is not None else "")
                 hosp = c2.number_input("Hóspedes", min_value=1, value=int(data['hospedes']) if data is not None else 1)
                 orig = c3.selectbox("Origem", ["Booking", "Telefone", "Whatsapp"], index=0)
-                c4, c5, c6, c7 = st.columns(4)
+                # NOVO CAMPO: FORMA DE PAGAMENTO
+                lista_pgto = ["PIX", "Dinheiro", "Credito", "Debito"]
+                idx_pgto = lista_pgto.index(data['forma_pgto']) if data is not None and data.get('forma_pgto') in lista_pgto else 0
+                pgto = c4.selectbox("Pagamento", lista_pgto, index=idx_pgto)
+                
+                c5, c6, c7, c8 = st.columns(4)
                 q_at = str(data['quarto']).split(", ") if data is not None else ["Master"]
-                quartos = c4.multiselect("Quartos", ["Master", "Studio", "Triplo"], q_at)
-                ent = c5.date_input("Check-in", value=pd.to_datetime(data['entrada']) if data is not None else date.today())
-                sai = c6.date_input("Check-out", value=pd.to_datetime(data['saida']) if data is not None else date.today())
-                val = c7.number_input("Total R$", value=float(data['total']) if data is not None else 0.0)
+                quartos = c5.multiselect("Quartos", ["Master", "Studio", "Triplo"], q_at)
+                ent = c6.date_input("Check-in", value=pd.to_datetime(data['entrada']) if data is not None else date.today())
+                sai = c7.date_input("Check-out", value=pd.to_datetime(data['saida']) if data is not None else date.today())
+                val = c8.number_input("Total R$", value=float(data['total']) if data is not None else 0.0)
+                
                 if st.form_submit_button("✅ SALVAR"):
-                    new = [data['id'] if mode=="editar" else int(datetime.now().timestamp()), nome, hosp, ", ".join(quartos), str(ent), str(sai), (sai-ent).days, val, orig]
+                    # Agora a estrutura tem 10 campos (ID, Nome, Hosp, Quarto, In, Out, Dias, Total, Origem, FormaPgto)
+                    new = [data['id'] if mode=="editar" else int(datetime.now().timestamp()), 
+                           nome, hosp, ", ".join(quartos), str(ent), str(sai), (sai-ent).days, val, orig, pgto]
                     if mode=="editar": update_row(ws_res, data['id'], new)
                     else: ws_res.append_row(new)
                     st.session_state.edit_mode = None; st.rerun()
@@ -191,19 +218,20 @@ elif menu == "📋 Reservas":
         df_r['en_dt'] = pd.to_datetime(df_r['entrada'])
         df_f = df_r[(df_r['en_dt'].dt.month == m) & (df_r['en_dt'].dt.year == a)].copy().sort_values(by='en_dt', ascending=False)
         st.markdown("---")
-        h_cols = st.columns([0.8, 3, 2, 2, 1.5, 0.6, 0.6])
-        for col, label in zip(h_cols, ["ID", "Hóspede", "Entrada", "Quarto", "Total", "📝", "🗑️"]): col.markdown(f"**{label}**")
+        h_cols = st.columns([0.6, 2.5, 1.5, 1.5, 1.5, 1.2, 0.6, 0.6])
+        for col, label in zip(h_cols, ["ID", "Hóspede", "Entrada", "Quarto", "Total", "Pgto", "📝", "🗑️"]): col.markdown(f"**{label}**")
         st.divider()
         for _, row in df_f.iterrows():
-            cols = st.columns([0.8, 3, 2, 2, 1.5, 0.6, 0.6])
+            cols = st.columns([0.6, 2.5, 1.5, 1.5, 1.5, 1.2, 0.6, 0.6])
             cols[0].write(f"`{str(row['id'])[-4:]}`")
             cols[1].write(row['nome'])
             cols[2].write(pd.to_datetime(row['entrada']).strftime('%d/%m/%Y'))
             cols[3].write(row['quarto'])
             cols[4].write(f"R$ {row['total']:,.2f}")
-            if cols[5].button("📝", key=f"e_{row['id']}"):
+            cols[5].write(f"`{row.get('forma_pgto', 'N/A')}`")
+            if cols[6].button("📝", key=f"e_{row['id']}"):
                 st.session_state.edit_mode = "editar"; st.session_state.item_selecionado = row; st.rerun()
-            if cols[6].button("🗑️", key=f"d_{row['id']}"): delete_by_id(ws_res, row['id']); st.rerun()
+            if cols[7].button("🗑️", key=f"d_{row['id']}"): delete_by_id(ws_res, row['id']); st.rerun()
 
 elif menu == "💸 Despesas":
     st.title("Gestão de Despesas")
