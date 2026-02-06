@@ -121,7 +121,7 @@ def seletor_periodo():
 # --- 6. MÓDULOS ---
 
 if menu == "💰 Dashboard":
-    st.title("BI Dashboard")
+    st.title("CHARITAS INN Dashboard")
     seletor_periodo()
     df_r, df_d = get_data_cached("reservas"), get_data_cached("despesas")
     bruto_p, taxas_p, operacionais_p = 0.0, 0.0, 0.0
