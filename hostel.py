@@ -117,7 +117,6 @@ if menu == "💰 Dashboard":
 
     liquido = bruto - taxas - operacionais
 
-    # Dashboard Geral do Mês Selecionado
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("BRUTO TOTAL", f"R$ {bruto:,.2f}")
     c2.metric("TAXAS TOTAIS", f"R$ {taxas:,.2f}")
@@ -138,14 +137,12 @@ if menu == "💰 Dashboard":
         if bruto > 0:
             st.bar_chart(pd.DataFrame({"Valor": [taxas, operacionais, liquido]}, index=["Taxas", "Operacional", "Lucro"]))
 
-    # --- SEÇÃO ATUALIZADA: FINANCEIRO FILTRADO ATÉ HOJE ---
     st.markdown("---")
     st.subheader(f"Resumo Financeiro Realizado (01/{m:02d} até {date.today().strftime('%d/%m/%Y')})")
     
     bruto_hoje, taxas_hoje, operacionais_hoje = 0.0, 0.0, 0.0
     hoje = date.today()
 
-    # Cálculo Reservas filtradas até a data atual
     if not df_mes_r.empty:
         df_hoje_r = df_mes_r[df_mes_r['en_dt'].dt.date <= hoje]
         if not df_hoje_r.empty:
@@ -157,13 +154,8 @@ if menu == "💰 Dashboard":
             else:
                 taxas_hoje = bruto_hoje * 0.18
 
-    # Cálculo Despesas filtradas até a data atual (Com correção solicitada)
     if not df_d.empty:
-        df_hoje_d = df_d[
-            (df_d['dt_dt'].dt.month == m) & 
-            (df_d['dt_dt'].dt.year == a) & 
-            (df_d['dt_dt'].dt.date <= hoje)
-        ]
+        df_hoje_d = df_d[(df_d['dt_dt'].dt.month == m) & (df_d['dt_dt'].dt.year == a) & (df_d['dt_dt'].dt.date <= hoje)]
         operacionais_hoje = df_hoje_d['valor'].sum()
 
     liquido_hoje = bruto_hoje - taxas_hoje - operacionais_hoje
@@ -173,7 +165,6 @@ if menu == "💰 Dashboard":
     ch2.metric("TAXAS ATÉ HOJE", f"R$ {taxas_hoje:,.2f}")
     ch3.metric("DESPESAS ATÉ HOJE", f"R$ {operacionais_hoje:,.2f}")
     ch4.metric("LUCRO ATÉ HOJE", f"R$ {liquido_hoje:,.2f}")
-    # ----------------------------------------------------
 
 elif menu == "📋 Reservas":
     st.title("Gestão de Reservas")
@@ -181,7 +172,10 @@ elif menu == "📋 Reservas":
     df_r = get_data(ws_res)
     if not df_r.empty:
         df_r['en_dt'] = pd.to_datetime(df_r['entrada'])
+        # Filtragem por mês e ano
         df_f = df_r[(df_r['en_dt'].dt.month == m) & (df_r['en_dt'].dt.year == a)].copy()
+        # ORDENAÇÃO: Data mais recente primeiro
+        df_f = df_f.sort_values(by='en_dt', ascending=False)
     else:
         df_f = pd.DataFrame()
 
@@ -235,6 +229,7 @@ elif menu == "📋 Reservas":
                 delete_by_id(ws_res, id_del); st.rerun()
 
     if not df_f.empty:
+        # Exibição da tabela já ordenada
         st.dataframe(df_f.drop(columns=['en_dt']), use_container_width=True, hide_index=True)
 
 elif menu == "💸 Despesas":
@@ -244,6 +239,8 @@ elif menu == "💸 Despesas":
     if not df_d.empty:
         df_d['dt_dt'] = pd.to_datetime(df_d['data'])
         df_fd = df_d[(df_d['dt_dt'].dt.month == m) & (df_d['dt_dt'].dt.year == a)].copy()
+        # Ordenação opcional também para despesas (data mais recente primeiro)
+        df_fd = df_fd.sort_values(by='dt_dt', ascending=False)
     else:
         df_fd = pd.DataFrame()
 
