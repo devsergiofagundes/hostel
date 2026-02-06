@@ -45,27 +45,29 @@ spreadsheet = client.open("hostel-db")
 ws_res = spreadsheet.worksheet("reservas")
 ws_des = spreadsheet.worksheet("despesas")
 
-# --- FUNÇÕES DE CÁLCULO DE TAXA ---
+# --- FUNÇÃO DE CÁLCULO DE TAXA (REVISADA E CUMULATIVA) ---
 def calcular_taxa_reserva(row):
     """
-    Regra: Se origem for Booking, 18%. 
-    Se Direta, taxa depende da forma de pagamento.
+    Regra: 
+    1. Se Origem == Booking -> +13% 
+    2. Taxa da Forma de Pagamento: Crédito (5%), Débito (2.39%), PIX/Dinheiro (0%)
+    As taxas são somadas.
     """
     total = float(row.get('total', 0))
     origem = str(row.get('origem', '')).strip()
     forma = str(row.get('forma_pgto', '')).strip()
     
-    if origem == "Booking":
-        return total * 0.18
+    taxa_plataforma = 0.13 if origem == "Booking" else 0.0
     
-    # Taxas para reservas diretas baseadas na forma de pagamento
-    taxas_diretas = {
+    taxas_financeiras = {
         "Credito": 0.05,
         "Debito": 0.0239,
         "PIX": 0.0,
         "Dinheiro": 0.0
     }
-    return total * taxas_diretas.get(forma, 0.0)
+    taxa_pgto = taxas_financeiras.get(forma, 0.0)
+    
+    return total * (taxa_plataforma + taxa_pgto)
 
 def get_data(ws):
     data = ws.get_all_records()
@@ -86,7 +88,6 @@ def update_row(ws, row_id, new_data):
     data = ws.get_all_records()
     for i, row in enumerate(data):
         if str(row.get('id')) == str(row_id):
-            # Agora a linha tem 10 colunas (incluindo forma_pgto)
             ws.update(f'A{i+2}:J{i+2}', [new_data])
             return True
     return False
@@ -126,7 +127,6 @@ if menu == "💰 Dashboard":
         df_mes_r = df_r[(df_r['en_dt'].dt.month == m) & (df_r['en_dt'].dt.year == a)]
         if not df_mes_r.empty:
             bruto = df_mes_r['total'].sum()
-            # Aplica a nova lógica de taxas linha a linha
             taxas = df_mes_r.apply(calcular_taxa_reserva, axis=1).sum()
 
     if not df_d.empty:
@@ -188,7 +188,6 @@ elif menu == "📋 Reservas":
                 nome = c1.text_input("Nome", value=data['nome'] if data is not None else "")
                 hosp = c2.number_input("Hóspedes", min_value=1, value=int(data['hospedes']) if data is not None else 1)
                 orig = c3.selectbox("Origem", ["Booking", "Telefone", "Whatsapp"], index=0)
-                # NOVO CAMPO: FORMA DE PAGAMENTO
                 lista_pgto = ["PIX", "Dinheiro", "Credito", "Debito"]
                 idx_pgto = lista_pgto.index(data['forma_pgto']) if data is not None and data.get('forma_pgto') in lista_pgto else 0
                 pgto = c4.selectbox("Pagamento", lista_pgto, index=idx_pgto)
@@ -201,7 +200,6 @@ elif menu == "📋 Reservas":
                 val = c8.number_input("Total R$", value=float(data['total']) if data is not None else 0.0)
                 
                 if st.form_submit_button("✅ SALVAR"):
-                    # Agora a estrutura tem 10 campos (ID, Nome, Hosp, Quarto, In, Out, Dias, Total, Origem, FormaPgto)
                     new = [data['id'] if mode=="editar" else int(datetime.now().timestamp()), 
                            nome, hosp, ", ".join(quartos), str(ent), str(sai), (sai-ent).days, val, orig, pgto]
                     if mode=="editar": update_row(ws_res, data['id'], new)
