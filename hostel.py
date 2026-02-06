@@ -56,22 +56,19 @@ def get_data_cached(sheet_name):
 def refresh_data():
     st.cache_data.clear()
 
-# --- 4. FUNÇÕES DE MANIPULAÇÃO (CORRIGIDAS) ---
-
+# --- 4. FUNÇÕES DE MANIPULAÇÃO ---
 def delete_by_id(sheet_name, row_id):
     try:
         ws = client.open("hostel-db").worksheet(sheet_name)
-        # Buscar todos os valores da coluna A (IDs) para achar a linha exata
         ids = ws.col_values(1) 
         for i, val in enumerate(ids):
             if str(val) == str(row_id):
-                ws.delete_rows(i + 1) # i+1 porque o Google Sheets começa em 1
+                ws.delete_rows(i + 1)
                 refresh_data()
                 return True
         return False
     except Exception as e:
-        st.error(f"Erro ao deletar: {e}")
-        return False
+        st.error(f"Erro ao deletar: {e}"); return False
 
 def update_row_v2(sheet_name, row_id, new_data):
     try:
@@ -79,16 +76,13 @@ def update_row_v2(sheet_name, row_id, new_data):
         ids = ws.col_values(1)
         for i, val in enumerate(ids):
             if str(val) == str(row_id):
-                # Determina a letra da última coluna baseada no tamanho da lista new_data
-                # Ex: Reservas tem 10 colunas (A até J)
                 last_col = chr(64 + len(new_data))
                 ws.update(f'A{i+1}:{last_col}{i+1}', [new_data])
                 refresh_data()
                 return True
         return False
     except Exception as e:
-        st.error(f"Erro ao editar: {e}")
-        return False
+        st.error(f"Erro ao editar: {e}"); return False
 
 def calcular_taxa_reserva(row):
     total = float(row.get('total', 0))
@@ -106,7 +100,7 @@ if "data_filtro" not in st.session_state:
 with st.sidebar:
     st.markdown("## HOSTEL PRO")
     menu = st.radio("MENU", ["💰 Dashboard", "📅 Calendário", "📋 Reservas", "💸 Despesas"])
-    if st.button("🔄 Atualizar"):
+    if st.button("🔄 Atualizar Dados"):
         refresh_data(); st.rerun()
     if st.button("Sair"):
         st.session_state["password_correct"] = False; st.rerun()
@@ -127,7 +121,6 @@ if menu == "💰 Dashboard":
     st.title("BI Dashboard")
     seletor_periodo()
     df_r, df_d = get_data_cached("reservas"), get_data_cached("despesas")
-    
     bruto_p, taxas_p, operacionais_p = 0.0, 0.0, 0.0
     df_mes_r = pd.DataFrame()
 
@@ -151,21 +144,19 @@ if menu == "💰 Dashboard":
     cp4.metric("LUCRO ESTIMADO", f"R$ {(bruto_p - taxas_p - operacionais_p):,.2f}")
 
     st.markdown("---")
-    st.subheader(f"📊 Realizado: 01/{m:02d}/{a} até {date.today().strftime('%d/%m/%Y')}")
+    st.subheader(f"📊 Realizado até {date.today().strftime('%d/%m/%Y')}")
     hoje = pd.Timestamp(date.today())
     bruto_h, taxas_h, operacionais_h = 0.0, 0.0, 0.0
-
     if not df_mes_r.empty:
         df_hoje_r = df_mes_r[df_mes_r['en_dt'] <= hoje]
         bruto_h = df_hoje_r['total'].sum()
         taxas_h = df_hoje_r.apply(calcular_taxa_reserva, axis=1).sum()
-
     if not df_d.empty:
         df_hoje_d = df_d[(df_d['dt_dt'].dt.month == m) & (df_d['dt_dt'].dt.year == a) & (df_d['dt_dt'] <= hoje)]
         operacionais_h = df_hoje_d['valor'].sum()
 
     ch1, ch2, ch3, ch4 = st.columns(4)
-    ch1.metric("BRUTO REALIZADO", f"R$ {bruto_h:,.2f}")
+    ch1.metric("BRUTO REAL", f"R$ {bruto_h:,.2f}")
     ch2.metric("TAXAS PAGAS", f"R$ {taxas_h:,.2f}")
     ch3.metric("DESPESAS PAGAS", f"R$ {operacionais_h:,.2f}")
     ch4.metric("LUCRO REAL", f"R$ {(bruto_h - taxas_h - operacionais_h):,.2f}")
@@ -181,16 +172,24 @@ elif menu == "📋 Reservas":
                 c1, c2, c3, c4 = st.columns([2, 1, 1, 1.5])
                 nome = c1.text_input("Nome", value=data['nome'] if data is not None else "")
                 hosp = c2.number_input("Hóspedes", min_value=1, value=int(data['hospedes']) if data is not None else 1)
-                orig = c3.selectbox("Origem", ["Booking", "Telefone", "Whatsapp"], index=0)
-                pgto = c4.selectbox("Pagamento", ["PIX", "Dinheiro", "Credito", "Debito"])
+                
+                lista_orig = ["Booking", "Telefone", "Whatsapp"]
+                idx_orig = lista_orig.index(data['origem']) if data is not None and data['origem'] in lista_orig else 0
+                orig = c3.selectbox("Origem", lista_orig, index=idx_orig)
+                
+                lista_pgto = ["PIX", "Dinheiro", "Credito", "Debito"]
+                idx_pgto = lista_pgto.index(data['forma_pgto']) if data is not None and data['forma_pgto'] in lista_pgto else 0
+                pgto = c4.selectbox("Pagamento", lista_pgto, index=idx_pgto)
                 
                 c5, c6, c7, c8 = st.columns(4)
-                quartos = c5.multiselect("Quartos", ["Master", "Studio", "Triplo"], str(data['quarto']).split(", ") if data else ["Master"])
+                q_def = str(data['quarto']).split(", ") if data is not None else ["Master"]
+                quartos = c5.multiselect("Quartos", ["Master", "Studio", "Triplo"], default=q_def)
                 ent = c6.date_input("Check-in", value=pd.to_datetime(data['entrada']) if data is not None else date.today())
                 sai = c7.date_input("Check-out", value=pd.to_datetime(data['saida']) if data is not None else date.today())
                 val = c8.number_input("Total R$", value=float(data['total']) if data is not None else 0.0)
                 
-                if st.form_submit_button("✅ SALVAR"):
+                cb1, cb2 = st.columns(2)
+                if cb1.form_submit_button("✅ SALVAR"):
                     rid = data['id'] if mode=="editar" else int(datetime.now().timestamp())
                     new = [rid, nome, hosp, ", ".join(quartos), str(ent), str(sai), (sai-ent).days, val, orig, pgto]
                     if mode=="editar": update_row_v2("reservas", rid, new)
@@ -198,7 +197,7 @@ elif menu == "📋 Reservas":
                         client.open("hostel-db").worksheet("reservas").append_row(new)
                         refresh_data()
                     st.session_state.edit_mode = None; st.rerun()
-                if st.form_submit_button("❌ CANCELAR"): st.session_state.edit_mode = None; st.rerun()
+                if cb2.form_submit_button("❌ CANCELAR"): st.session_state.edit_mode = None; st.rerun()
 
     if not st.session_state.get("edit_mode"):
         if st.button("➕ Nova Reserva"): 
@@ -222,8 +221,7 @@ elif menu == "📋 Reservas":
             cols[5].write(f"`{row.get('forma_pgto', 'N/A')}`")
             if cols[6].button("📝", key=f"e_{row['id']}"):
                 st.session_state.edit_mode = "editar"; st.session_state.item_selecionado = row; st.rerun()
-            if cols[7].button("🗑️", key=f"d_{row['id']}"): 
-                delete_by_id("reservas", row['id']); st.rerun()
+            if cols[7].button("🗑️", key=f"d_{row['id']}"): delete_by_id("reservas", row['id']); st.rerun()
 
 elif menu == "💸 Despesas":
     st.title("Gestão de Despesas")
@@ -236,7 +234,9 @@ elif menu == "💸 Despesas":
                 dt_p = c1.date_input("Data", value=pd.to_datetime(data_d['data']) if data_d is not None else date.today())
                 ds_p = c2.text_input("Descrição", value=data_d['descricao'] if data_d is not None else "")
                 vl_p = c3.number_input("Valor", value=float(data_d['valor']) if data_d is not None else 0.0)
-                if st.form_submit_button("✅ SALVAR"):
+                
+                db1, db2 = st.columns(2)
+                if db1.form_submit_button("✅ SALVAR"):
                     did = data_d['id'] if st.session_state.edit_mode_d == "editar" else int(datetime.now().timestamp())
                     new_d = [did, str(dt_p), ds_p, vl_p]
                     if st.session_state.edit_mode_d == "editar": update_row_v2("despesas", did, new_d)
@@ -244,7 +244,7 @@ elif menu == "💸 Despesas":
                         client.open("hostel-db").worksheet("despesas").append_row(new_d)
                         refresh_data()
                     st.session_state.edit_mode_d = None; st.rerun()
-                if st.form_submit_button("❌ CANCELAR"): st.session_state.edit_mode_d = None; st.rerun()
+                if db2.form_submit_button("❌ CANCELAR"): st.session_state.edit_mode_d = None; st.rerun()
 
     if not st.session_state.get("edit_mode_d"):
         if st.button("➕ Nova Despesa"): 
@@ -266,8 +266,7 @@ elif menu == "💸 Despesas":
             cols[3].write(f"R$ {row['valor']:,.2f}")
             if cols[4].button("📝", key=f"ed_{row['id']}"):
                 st.session_state.edit_mode_d = "editar"; st.session_state.item_selecionado_d = row; st.rerun()
-            if cols[5].button("🗑️", key=f"dd_{row['id']}"): 
-                delete_by_id("despesas", row['id']); st.rerun()
+            if cols[5].button("🗑️", key=f"dd_{row['id']}"): delete_by_id("despesas", row['id']); st.rerun()
 
 elif menu == "📅 Calendário":
     st.title("Mapa de Ocupação")
