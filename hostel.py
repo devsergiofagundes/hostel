@@ -117,10 +117,11 @@ if menu == "💰 Dashboard":
 
     liquido = bruto - taxas - operacionais
 
+    # Dashboard Geral do Mês Selecionado
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("BRUTO", f"R$ {bruto:,.2f}")
-    c2.metric("TAXAS", f"R$ {taxas:,.2f}")
-    c3.metric("DESPESAS", f"R$ {operacionais:,.2f}")
+    c1.metric("BRUTO TOTAL", f"R$ {bruto:,.2f}")
+    c2.metric("TAXAS TOTAIS", f"R$ {taxas:,.2f}")
+    c3.metric("DESPESAS TOTAIS", f"R$ {operacionais:,.2f}")
     c4.metric("LUCRO REAL", f"R$ {liquido:,.2f}")
 
     st.markdown("---")
@@ -137,14 +138,14 @@ if menu == "💰 Dashboard":
         if bruto > 0:
             st.bar_chart(pd.DataFrame({"Valor": [taxas, operacionais, liquido]}, index=["Taxas", "Operacional", "Lucro"]))
 
-    # --- NOVA SEÇÃO: FINANCEIRO ACUMULADO ATÉ HOJE ---
+    # --- SEÇÃO ATUALIZADA: FINANCEIRO FILTRADO ATÉ HOJE ---
     st.markdown("---")
-    st.subheader(f"Resumo Financeiro (01/{m:02d} até {date.today().strftime('%d/%m/%Y')})")
+    st.subheader(f"Resumo Financeiro Realizado (01/{m:02d} até {date.today().strftime('%d/%m/%Y')})")
     
     bruto_hoje, taxas_hoje, operacionais_hoje = 0.0, 0.0, 0.0
     hoje = date.today()
 
-    # Cálculo Reservas até hoje
+    # Cálculo Reservas filtradas até a data atual
     if not df_mes_r.empty:
         df_hoje_r = df_mes_r[df_mes_r['en_dt'].dt.date <= hoje]
         if not df_hoje_r.empty:
@@ -156,9 +157,13 @@ if menu == "💰 Dashboard":
             else:
                 taxas_hoje = bruto_hoje * 0.18
 
-    # Cálculo Despesas até hoje
+    # Cálculo Despesas filtradas até a data atual (Com correção solicitada)
     if not df_d.empty:
-        df_hoje_d = df_d[(df_d['dt_dt'].dt.month == m) & (df_d['dt_dt'].dt.year == a) & (df_d['dt_dt'].dt.date <= hoje)]
+        df_hoje_d = df_d[
+            (df_d['dt_dt'].dt.month == m) & 
+            (df_d['dt_dt'].dt.year == a) & 
+            (df_d['dt_dt'].dt.date <= hoje)
+        ]
         operacionais_hoje = df_hoje_d['valor'].sum()
 
     liquido_hoje = bruto_hoje - taxas_hoje - operacionais_hoje
@@ -168,7 +173,7 @@ if menu == "💰 Dashboard":
     ch2.metric("TAXAS ATÉ HOJE", f"R$ {taxas_hoje:,.2f}")
     ch3.metric("DESPESAS ATÉ HOJE", f"R$ {operacionais_hoje:,.2f}")
     ch4.metric("LUCRO ATÉ HOJE", f"R$ {liquido_hoje:,.2f}")
-    # ------------------------------------------------
+    # ----------------------------------------------------
 
 elif menu == "📋 Reservas":
     st.title("Gestão de Reservas")
