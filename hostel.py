@@ -175,24 +175,24 @@ elif menu == "📋 Reservas":
         df_r['en_dt'] = pd.to_datetime(df_r['entrada'])
         df_f = df_r[(df_r['en_dt'].dt.month == m) & (df_r['en_dt'].dt.year == a)].copy()
         df_f = df_f.sort_values(by='en_dt', ascending=False)
+        # Adiciona coluna de seleção (não salva no banco)
+        df_f.insert(0, "Selecionar", False)
     else:
         df_f = pd.DataFrame()
 
-    st.info("💡 Selecione uma linha na tabela abaixo para Editar ou Apagar.")
+    st.info("💡 Marque a caixa na primeira coluna para Editar ou Apagar o registro.")
     
-    # Renderização da tabela com seleção de linha única
-    # Comentário: O uso de on_select='rerun' permite capturar a seleção em tempo real
-    event_r = st.dataframe(
-        df_f.drop(columns=['en_dt']), 
-        use_container_width=True, 
-        hide_index=True, 
-        selection_mode="single_row",
-        on_select="rerun"
+    # Substituição do on_select (Streamlit 1.35+) por data_editor (Mais estável)
+    edited_df = st.data_editor(
+        df_f.drop(columns=['en_dt']),
+        use_container_width=True,
+        hide_index=True,
+        disabled=["id", "nome", "hospedes", "quarto", "entrada", "saida", "dias", "total", "origem"]
     )
 
-    # Captura da linha selecionada
-    selected_row_idx = event_r.selection.rows[0] if event_r.selection.rows else None
-    res_data = df_f.iloc[selected_row_idx] if selected_row_idx is not None else None
+    # Identifica a linha selecionada pelo checkbox
+    selected_rows = edited_df[edited_df["Selecionar"] == True]
+    res_data = selected_rows.iloc[0] if not selected_rows.empty else None
 
     t1, t2, t3 = st.tabs(["➕ Nova", "✏️ Editar Selecionada", "🗑️ Apagar Selecionada"])
     
@@ -236,7 +236,7 @@ elif menu == "📋 Reservas":
                     update_row(ws_res, res_data['id'], new_row)
                     st.rerun()
         else:
-            st.warning("Selecione uma reserva na tabela para editar.")
+            st.warning("Marque o checkbox de uma reserva para editar.")
 
     with t3:
         if res_data is not None:
@@ -244,7 +244,7 @@ elif menu == "📋 Reservas":
             if st.button("CONFIRMAR EXCLUSÃO"):
                 delete_by_id(ws_res, res_data['id']); st.rerun()
         else:
-            st.warning("Selecione uma reserva na tabela para apagar.")
+            st.warning("Marque o checkbox de uma reserva para apagar.")
 
 elif menu == "💸 Despesas":
     st.title("Gestão de Despesas")
@@ -255,21 +255,21 @@ elif menu == "💸 Despesas":
         df_d['dt_dt'] = pd.to_datetime(df_d['data'])
         df_fd = df_d[(df_d['dt_dt'].dt.month == m) & (df_d['dt_dt'].dt.year == a)].copy()
         df_fd = df_fd.sort_values(by='dt_dt', ascending=False)
+        df_fd.insert(0, "Selecionar", False)
     else:
         df_fd = pd.DataFrame()
 
-    st.info("💡 Selecione uma linha na tabela abaixo para Editar ou Apagar.")
+    st.info("💡 Marque a caixa na primeira coluna para Editar ou Apagar o registro.")
 
-    event_d = st.dataframe(
+    edited_df_d = st.data_editor(
         df_fd.drop(columns=['dt_dt']), 
         use_container_width=True, 
         hide_index=True,
-        selection_mode="single_row",
-        on_select="rerun"
+        disabled=["id", "data", "descricao", "valor"]
     )
 
-    selected_row_idx_d = event_d.selection.rows[0] if event_d.selection.rows else None
-    des_data = df_fd.iloc[selected_row_idx_d] if selected_row_idx_d is not None else None
+    selected_rows_d = edited_df_d[edited_df_d["Selecionar"] == True]
+    des_data = selected_rows_d.iloc[0] if not selected_rows_d.empty else None
 
     t1, t2, t3 = st.tabs(["➕ Nova", "✏️ Editar Selecionada", "🗑️ Apagar Selecionada"])
     
@@ -290,12 +290,11 @@ elif menu == "💸 Despesas":
                 ds_e = st.text_input("Descrição", value=des_data['descricao'])
                 vl_e = st.number_input("Valor", value=float(des_data['valor']))
                 if st.form_submit_button("Atualizar"):
-                    # Busca o índice real na planilha via ID
                     row_idx = df_d[df_d["id"] == des_data['id']].index[0] + 2
                     ws_des.update(f'A{row_idx}:D{row_idx}', [[int(des_data['id']), str(dt_e), ds_e, vl_e]])
                     st.rerun()
         else:
-            st.warning("Selecione uma despesa na tabela para editar.")
+            st.warning("Marque o checkbox de uma despesa para editar.")
 
     with t3:
         if des_data is not None:
@@ -303,7 +302,7 @@ elif menu == "💸 Despesas":
             if st.button("CONFIRMAR EXCLUSÃO"):
                 delete_by_id(ws_des, des_data['id']); st.rerun()
         else:
-            st.warning("Selecione uma despesa na tabela para apagar.")
+            st.warning("Marque o checkbox de uma despesa para apagar.")
 
 elif menu == "📅 Calendário":
     st.title("Mapa de Ocupação")
