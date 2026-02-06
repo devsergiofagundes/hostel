@@ -15,7 +15,6 @@ def check_password():
         st.session_state["password_correct"] = False
     if st.session_state["password_correct"]:
         return True
-    
     with st.form("login_gate"):
         pwd = st.text_input("Senha de Acesso", type="password")
         if st.form_submit_button("Entrar"):
@@ -45,23 +44,14 @@ spreadsheet = client.open("hostel-db")
 ws_res = spreadsheet.worksheet("reservas")
 ws_des = spreadsheet.worksheet("despesas")
 
-# --- FUNÇÃO DE CÁLCULO DE TAXA (CORRIGIDA) ---
 def calcular_taxa_reserva(row):
     total = float(row.get('total', 0))
     origem = str(row.get('origem', '')).strip()
     forma = str(row.get('forma_pgto', '')).strip()
-    
-    # REGRA: Booking é fixo 13%. Direto depende da forma de pagamento.
-    if origem == "Booking":
-        return total * 0.13
-    
-    taxas_diretas = {
-        "Credito": 0.05,
-        "Debito": 0.0239,
-        "PIX": 0.0,
-        "Dinheiro": 0.0
-    }
-    return total * taxas_diretas.get(forma, 0.0)
+    taxa_origem = 0.13 if origem == "Booking" else 0.0
+    taxas_financeiras = {"Credito": 0.05, "Debito": 0.0239, "PIX": 0.0, "Dinheiro": 0.0}
+    taxa_pgto = taxas_financeiras.get(forma, 0.0)
+    return total * (taxa_origem + taxa_pgto)
 
 def get_data(ws):
     data = ws.get_all_records()
@@ -228,4 +218,46 @@ elif menu == "📋 Reservas":
 elif menu == "💸 Despesas":
     st.title("Gestão de Despesas")
     seletor_periodo()
-    # (Restante do código de despesas e calendário permanece igual...)
+    if "edit_mode_d" in st.session_state and st.session_state.edit_mode_d:
+        with st.container(border=True):
+            data_d = st.session_state.item_selecionado_d
+            with st.form("form_d"):
+                c1, c2, c3 = st.columns([1, 2, 1])
+                dt_p = c1.date_input("Data", value=pd.to_datetime(data_d['data']) if data_d is not None else date.today())
+                ds_p = c2.text_input("Descrição", value=data_d['descricao'] if data_d is not None else "")
+                vl_p = c3.number_input("Valor", value=float(data_d['valor']) if data_d is not None else 0.0)
+                if st.form_submit_button("✅ SALVAR"):
+                    row_id = data_d['id'] if st.session_state.edit_mode_d == "editar" else int(datetime.now().timestamp())
+                    if st.session_state.edit_mode_d == "editar": update_row(ws_des, row_id, [row_id, str(dt_p), ds_p, vl_p])
+                    else: ws_des.append_row([row_id, str(dt_p), ds_p, vl_p])
+                    st.session_state.edit_mode_d = None; st.rerun()
+                if st.form_submit_button("❌ CANCELAR"): st.session_state.edit_mode_d = None; st.rerun()
+
+    if not st.session_state.get("edit_mode_d"):
+        if st.button("➕ Nova Despesa"): 
+            st.session_state.edit_mode_d = "novo"; st.session_state.item_selecionado_d = None; st.rerun()
+
+    df_d = get_data(ws_des)
+    if not df_d.empty:
+        df_d['dt_dt'] = pd.to_datetime(df_d['data'])
+        df_fd = df_d[(df_d['dt_dt'].dt.month == m) & (df_d['dt_dt'].dt.year == a)].copy().sort_values(by='dt_dt', ascending=False)
+        st.markdown("---")
+        h_cols_d = st.columns([1, 2, 4, 2, 0.6, 0.6])
+        for col, label in zip(h_cols_d, ["ID", "Data", "Descrição", "Valor", "📝", "🗑️"]): col.markdown(f"**{label}**")
+        st.divider()
+        for _, row in df_fd.iterrows():
+            cols = st.columns([1, 2, 4, 2, 0.6, 0.6])
+            cols[0].write(f"`{str(row['id'])[-4:]}`")
+            cols[1].write(pd.to_datetime(row['data']).strftime('%d/%m/%Y'))
+            cols[2].write(row['descricao'])
+            cols[3].write(f"R$ {row['valor']:,.2f}")
+            if cols[4].button("📝", key=f"ed_{row['id']}"):
+                st.session_state.edit_mode_d = "editar"; st.session_state.item_selecionado_d = row; st.rerun()
+            if cols[5].button("🗑️", key=f"dd_{row['id']}"): delete_by_id(ws_des, row['id']); st.rerun()
+
+elif menu == "📅 Calendário":
+    st.title("Mapa de Ocupação")
+    df = get_data(ws_res)
+    if not df.empty:
+        evs = [{"title": f"{r['quarto']} | {r['nome']}", "start": str(r['entrada']), "end": str(r['saida']), "color": "#4318FF"} for _, r in df.iterrows()]
+        calendar(events=evs)
