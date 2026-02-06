@@ -104,9 +104,7 @@ if menu == "💰 Dashboard":
         if not df_mes_r.empty:
             bruto = df_mes_r['total'].sum()
             if 'origem' in df_mes_r.columns:
-                # Booking: 18%
                 tax_booking = df_mes_r[df_mes_r['origem'] == 'Booking']['total'].sum() * 0.18
-                # Telefone e Whatsapp: Apenas 5%
                 tax_direta = df_mes_r[df_mes_r['origem'].isin(['Telefone', 'Whatsapp'])]['total'].sum() * 0.05
                 taxas = tax_booking + tax_direta
             else: 
@@ -138,6 +136,39 @@ if menu == "💰 Dashboard":
         st.subheader("Divisão Financeira")
         if bruto > 0:
             st.bar_chart(pd.DataFrame({"Valor": [taxas, operacionais, liquido]}, index=["Taxas", "Operacional", "Lucro"]))
+
+    # --- NOVA SEÇÃO: FINANCEIRO ACUMULADO ATÉ HOJE ---
+    st.markdown("---")
+    st.subheader(f"Resumo Financeiro (01/{m:02d} até {date.today().strftime('%d/%m/%Y')})")
+    
+    bruto_hoje, taxas_hoje, operacionais_hoje = 0.0, 0.0, 0.0
+    hoje = date.today()
+
+    # Cálculo Reservas até hoje
+    if not df_mes_r.empty:
+        df_hoje_r = df_mes_r[df_mes_r['en_dt'].dt.date <= hoje]
+        if not df_hoje_r.empty:
+            bruto_hoje = df_hoje_r['total'].sum()
+            if 'origem' in df_hoje_r.columns:
+                tax_b_h = df_hoje_r[df_hoje_r['origem'] == 'Booking']['total'].sum() * 0.18
+                tax_d_h = df_hoje_r[df_hoje_r['origem'].isin(['Telefone', 'Whatsapp'])]['total'].sum() * 0.05
+                taxas_hoje = tax_b_h + tax_d_h
+            else:
+                taxas_hoje = bruto_hoje * 0.18
+
+    # Cálculo Despesas até hoje
+    if not df_d.empty:
+        df_hoje_d = df_d[(df_d['dt_dt'].dt.month == m) & (df_d['dt_dt'].dt.year == a) & (df_d['dt_dt'].dt.date <= hoje)]
+        operacionais_hoje = df_hoje_d['valor'].sum()
+
+    liquido_hoje = bruto_hoje - taxas_hoje - operacionais_hoje
+
+    ch1, ch2, ch3, ch4 = st.columns(4)
+    ch1.metric("BRUTO ATÉ HOJE", f"R$ {bruto_hoje:,.2f}")
+    ch2.metric("TAXAS ATÉ HOJE", f"R$ {taxas_hoje:,.2f}")
+    ch3.metric("DESPESAS ATÉ HOJE", f"R$ {operacionais_hoje:,.2f}")
+    ch4.metric("LUCRO ATÉ HOJE", f"R$ {liquido_hoje:,.2f}")
+    # ------------------------------------------------
 
 elif menu == "📋 Reservas":
     st.title("Gestão de Reservas")
@@ -180,7 +211,6 @@ elif menu == "📋 Reservas":
                 ent_e = en_e.date_input("In", value=pd.to_datetime(res_data['entrada']))
                 sai_e = sa_e.date_input("Out", value=pd.to_datetime(res_data['saida']))
                 
-                # Definir índice correto para o selectbox de origem
                 lista_origens = ["Booking", "Telefone", "Whatsapp"]
                 origem_atual = res_data.get('origem', "Booking")
                 idx_origem = lista_origens.index(origem_atual) if origem_atual in lista_origens else 0
