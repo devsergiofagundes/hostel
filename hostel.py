@@ -103,12 +103,9 @@ if menu == "💰 Dashboard":
         df_mes_r = df_r[(df_r['en_dt'].dt.month == m) & (df_r['en_dt'].dt.year == a)]
         if not df_mes_r.empty:
             bruto = df_mes_r['total'].sum()
-            if 'origem' in df_mes_r.columns:
-                tax_booking = df_mes_r[df_mes_r['origem'] == 'Booking']['total'].sum() * 0.18
-                tax_direta = df_mes_r[df_mes_r['origem'].isin(['Telefone', 'Whatsapp'])]['total'].sum() * 0.05
-                taxas = tax_booking + tax_direta
-            else: 
-                taxas = bruto * 0.18
+            tax_b = df_mes_r[df_mes_r['origem'] == 'Booking']['total'].sum() * 0.18
+            tax_d = df_mes_r[df_mes_r['origem'].isin(['Telefone', 'Whatsapp'])]['total'].sum() * 0.05
+            taxas = tax_b + tax_d
 
     if not df_d.empty:
         df_d['dt_dt'] = pd.to_datetime(df_d['data'])
@@ -117,170 +114,137 @@ if menu == "💰 Dashboard":
 
     liquido = bruto - taxas - operacionais
 
+    # --- MÉTRICAS TOTAIS ---
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("BRUTO TOTAL", f"R$ {bruto:,.2f}")
+    c1.metric("BRUTO TOTAL (MÊS)", f"R$ {bruto:,.2f}")
     c2.metric("TAXAS TOTAIS", f"R$ {taxas:,.2f}")
     c3.metric("DESPESAS TOTAIS", f"R$ {operacionais:,.2f}")
-    c4.metric("LUCRO REAL", f"R$ {liquido:,.2f}")
+    c4.metric("LUCRO ESTIMADO", f"R$ {liquido:,.2f}")
 
+    # --- GRÁFICOS RESTAURADOS ---
     st.markdown("---")
-    st.subheader(f"Financeiro Realizado (01/{m:02d} até {date.today().strftime('%d/%m/%Y')})")
+    cg1, cg2 = st.columns(2)
+    with cg1:
+        st.subheader("Ocupação por Quarto")
+        if not df_mes_r.empty:
+            df_plot = df_mes_r.copy()
+            df_plot['quarto'] = df_plot['quarto'].astype(str).str.split(', ')
+            st.bar_chart(df_plot.explode('quarto').groupby('quarto')['total'].count())
+        else: st.info("Sem reservas para o período.")
     
-    bruto_hoje, taxas_hoje, operacionais_hoje = 0.0, 0.0, 0.0
+    with cg2:
+        st.subheader("Divisão Financeira (Mês)")
+        if bruto > 0:
+            fin_data = pd.DataFrame({
+                "Categoria": ["Taxas", "Despesas", "Lucro"],
+                "Valor": [taxas, operacionais, max(0, liquido)]
+            })
+            st.bar_chart(fin_data.set_index("Categoria"))
+        else: st.info("Sem dados financeiros.")
+
+    # --- MÉTRICAS ATÉ HOJE ---
+    st.markdown("---")
+    st.subheader(f"Realizado: 01/{m:02d} até {date.today().strftime('%d/%m/%Y')}")
+    
     hoje = date.today()
+    br_h, tx_h, op_h = 0.0, 0.0, 0.0
 
     if not df_mes_r.empty:
-        df_hoje_r = df_mes_r[df_mes_r['en_dt'].dt.date <= hoje]
-        if not df_hoje_r.empty:
-            bruto_hoje = df_hoje_r['total'].sum()
-            taxas_hoje = (df_hoje_r[df_hoje_r['origem'] == 'Booking']['total'].sum() * 0.18) + (df_hoje_r[df_hoje_r['origem'].isin(['Telefone', 'Whatsapp'])]['total'].sum() * 0.05)
+        df_h_r = df_mes_r[df_mes_r['en_dt'].dt.date <= hoje]
+        br_h = df_h_r['total'].sum()
+        tx_h = (df_h_r[df_h_r['origem'] == 'Booking']['total'].sum() * 0.18) + (df_h_r[df_h_r['origem'].isin(['Telefone', 'Whatsapp'])]['total'].sum() * 0.05)
 
     if not df_d.empty:
-        df_hoje_d = df_d[(df_d['dt_dt'].dt.month == m) & (df_d['dt_dt'].dt.year == a) & (df_d['dt_dt'].dt.date <= hoje)]
-        operacionais_hoje = df_hoje_d['valor'].sum()
+        df_h_d = df_d[(df_d['dt_dt'].dt.month == m) & (df_d['dt_dt'].dt.year == a) & (df_d['dt_dt'].dt.date <= hoje)]
+        op_h = df_h_d['valor'].sum()
 
     ch1, ch2, ch3, ch4 = st.columns(4)
-    ch1.metric("BRUTO ATÉ HOJE", f"R$ {bruto_hoje:,.2f}")
-    ch2.metric("TAXAS ATÉ HOJE", f"R$ {taxas_hoje:,.2f}")
-    ch3.metric("DESPESAS ATÉ HOJE", f"R$ {operacionais_hoje:,.2f}")
-    ch4.metric("LUCRO ATÉ HOJE", f"R$ {(bruto_hoje - taxas_hoje - operacionais_hoje):,.2f}")
+    ch1.metric("BRUTO ATÉ HOJE", f"R$ {br_h:,.2f}")
+    ch2.metric("TAXAS ATÉ HOJE", f"R$ {tx_h:,.2f}")
+    ch3.metric("DESPESAS ATÉ HOJE", f"R$ {op_h:,.2f}")
+    ch4.metric("LUCRO ATÉ HOJE", f"R$ {(br_h - tx_h - op_h):,.2f}")
 
 elif menu == "📋 Reservas":
     st.title("Gestão de Reservas")
     seletor_periodo()
     
-    # --- FORMULÁRIO CENTRALIZADO (Aparece apenas quando acionado) ---
     if "edit_mode" in st.session_state and st.session_state.edit_mode:
         with st.container(border=True):
-            mode = st.session_state.edit_mode
-            data = st.session_state.item_selecionado
-            st.subheader("📝 Editar Reserva" if mode == "editar" else "➕ Nova Reserva")
-            
-            with st.form("form_reserva_central"):
+            mode, data = st.session_state.edit_mode, st.session_state.item_selecionado
+            st.subheader("📝 Editar" if mode == "editar" else "➕ Nova Reserva")
+            with st.form("form_r"):
                 c1, c2, c3 = st.columns([2, 1, 1])
-                nome_f = c1.text_input("Nome do Hóspede", value=data['nome'] if data is not None else "")
-                hosp_f = c2.number_input("Hóspedes", min_value=1, value=int(data['hospedes']) if data is not None else 1)
-                orig_f = c3.selectbox("Origem", ["Booking", "Telefone", "Whatsapp"], index=0)
-                
+                nome = c1.text_input("Nome", value=data['nome'] if data is not None else "")
+                hosp = c2.number_input("Hóspedes", min_value=1, value=int(data['hospedes']) if data is not None else 1)
+                orig = c3.selectbox("Origem", ["Booking", "Telefone", "Whatsapp"], index=0)
                 c4, c5, c6, c7 = st.columns(4)
-                q_atual = str(data['quarto']).split(", ") if data is not None else ["Master"]
-                q_f = c4.multiselect("Quartos", ["Master", "Studio", "Triplo"], q_atual)
-                ent_f = c5.date_input("Check-in", value=pd.to_datetime(data['entrada']) if data is not None else date.today())
-                sai_f = c6.date_input("Check-out", value=pd.to_datetime(data['saida']) if data is not None else date.today())
-                val_f = c7.number_input("Valor Total", value=float(data['total']) if data is not None else 0.0)
+                q_at = str(data['quarto']).split(", ") if data is not None else ["Master"]
+                quartos = c4.multiselect("Quartos", ["Master", "Studio", "Triplo"], q_at)
+                ent = c5.date_input("Check-in", value=pd.to_datetime(data['entrada']) if data is not None else date.today())
+                sai = c6.date_input("Check-out", value=pd.to_datetime(data['saida']) if data is not None else date.today())
+                val = c7.number_input("Total R$", value=float(data['total']) if data is not None else 0.0)
+                if st.form_submit_button("SALVAR"):
+                    new = [data['id'] if mode=="editar" else int(datetime.now().timestamp()), nome, hosp, ", ".join(quartos), str(ent), str(sai), (sai-ent).days, val, orig]
+                    if mode=="editar": update_row(ws_res, data['id'], new)
+                    else: ws_res.append_row(new)
+                    st.session_state.edit_mode = None; st.rerun()
+                if st.form_submit_button("CANCELAR"): st.session_state.edit_mode = None; st.rerun()
 
-                cb1, cb2 = st.columns([1, 5])
-                if cb1.form_submit_button("✅ SALVAR"):
-                    new_data = [int(data['id']) if mode == "editar" else int(datetime.now().timestamp()), 
-                                nome_f, hosp_f, ", ".join(q_f), str(ent_f), str(sai_f), (sai_f-ent_f).days, val_f, orig_f]
-                    if mode == "editar":
-                        update_row(ws_res, data['id'], new_data)
-                    else:
-                        ws_res.append_row(new_data)
-                    st.session_state.edit_mode = None
-                    st.rerun()
-                if cb2.form_submit_button("❌ CANCELAR"):
-                    st.session_state.edit_mode = None
-                    st.rerun()
-        st.divider()
-
-    # Botão de Nova Reserva (Sempre visível)
     if not st.session_state.get("edit_mode"):
-        if st.button("➕ Inserir Nova Reserva"):
-            st.session_state.edit_mode = "novo"
-            st.session_state.item_selecionado = None
-            st.rerun()
+        if st.button("➕ Nova Reserva"): 
+            st.session_state.edit_mode = "novo"; st.session_state.item_selecionado = None; st.rerun()
 
-    # --- LISTAGEM ---
     df_r = get_data(ws_res)
     if not df_r.empty:
         df_r['en_dt'] = pd.to_datetime(df_r['entrada'])
-        df_f = df_r[(df_r['en_dt'].dt.month == m) & (df_r['en_dt'].dt.year == a)].copy()
-        df_f = df_f.sort_values(by='en_dt', ascending=False)
-        
-        st.markdown("### Histórico de Reservas")
-        h_cols = st.columns([0.5, 3, 2, 2, 1.5, 1, 1])
-        headers = ["ID", "Nome", "Entrada", "Quarto", "Total", "Edit", "Del"]
-        for col, h in zip(h_cols, headers): col.write(f"**{h}**")
-        st.divider()
-
+        df_f = df_r[(df_r['en_dt'].dt.month == m) & (df_r['en_dt'].dt.year == a)].copy().sort_values(by='en_dt', ascending=False)
+        st.markdown("---")
         for _, row in df_f.iterrows():
-            cols = st.columns([0.5, 3, 2, 2, 1.5, 1, 1])
-            cols[0].write(f"`{str(row['id'])[-4:]}`") # Mostra só os 4 ultimos dígitos
+            cols = st.columns([0.5, 3, 2, 2, 1.5, 0.5, 0.5])
+            cols[0].write(f"`{str(row['id'])[-4:]}`")
             cols[1].write(row['nome'])
             cols[2].write(pd.to_datetime(row['entrada']).strftime('%d/%m/%Y'))
             cols[3].write(row['quarto'])
             cols[4].write(f"R$ {row['total']:,.2f}")
-            
-            if cols[5].button("📝", key=f"ed_{row['id']}"):
-                st.session_state.edit_mode = "editar"
-                st.session_state.item_selecionado = row
-                st.rerun()
-            
-            if cols[6].button("🗑️", key=f"del_{row['id']}"):
-                delete_by_id(ws_res, row['id'])
-                st.rerun()
+            if cols[5].button("📝", key=f"e_{row['id']}"):
+                st.session_state.edit_mode = "editar"; st.session_state.item_selecionado = row; st.rerun()
+            if cols[6].button("🗑️", key=f"d_{row['id']}"): delete_by_id(ws_res, row['id']); st.rerun()
 
 elif menu == "💸 Despesas":
     st.title("Gestão de Despesas")
     seletor_periodo()
-
-    # --- FORMULÁRIO CENTRALIZADO DESPESAS ---
     if "edit_mode_d" in st.session_state and st.session_state.edit_mode_d:
         with st.container(border=True):
-            mode = st.session_state.edit_mode_d
-            data = st.session_state.item_selecionado_d
-            st.subheader("📝 Editar Despesa" if mode == "editar" else "➕ Nova Despesa")
-            with st.form("form_d_central"):
+            data_d = st.session_state.item_selecionado_d
+            with st.form("form_d"):
                 c1, c2, c3 = st.columns([1, 2, 1])
-                dt_f = c1.date_input("Data", value=pd.to_datetime(data['data']) if data is not None else date.today())
-                desc_f = c2.text_input("Descrição", value=data['descricao'] if data is not None else "")
-                val_f = c3.number_input("Valor R$", value=float(data['valor']) if data is not None else 0.0)
-                
-                cb1, cb2 = st.columns([1, 5])
-                if cb1.form_submit_button("✅ SALVAR"):
-                    row_id = data['id'] if mode == "editar" else int(datetime.now().timestamp())
-                    if mode == "editar":
-                        update_row(ws_des, row_id, [row_id, str(dt_f), desc_f, val_f])
-                    else:
-                        ws_des.append_row([row_id, str(dt_f), desc_f, val_f])
-                    st.session_state.edit_mode_d = None
-                    st.rerun()
-                if cb2.form_submit_button("❌ CANCELAR"):
-                    st.session_state.edit_mode_d = None
-                    st.rerun()
-        st.divider()
+                dt_p = c1.date_input("Data", value=pd.to_datetime(data_d['data']) if data_d is not None else date.today())
+                ds_p = c2.text_input("Descrição", value=data_d['descricao'] if data_d is not None else "")
+                vl_p = c3.number_input("Valor", value=float(data_d['valor']) if data_d is not None else 0.0)
+                if st.form_submit_button("SALVAR"):
+                    row_id = data_d['id'] if st.session_state.edit_mode_d == "editar" else int(datetime.now().timestamp())
+                    if st.session_state.edit_mode_d == "editar": update_row(ws_des, row_id, [row_id, str(dt_p), ds_p, vl_p])
+                    else: ws_des.append_row([row_id, str(dt_p), ds_p, vl_p])
+                    st.session_state.edit_mode_d = None; st.rerun()
+                if st.form_submit_button("CANCELAR"): st.session_state.edit_mode_d = None; st.rerun()
 
     if not st.session_state.get("edit_mode_d"):
-        if st.button("➕ Inserir Nova Despesa"):
-            st.session_state.edit_mode_d = "novo"
-            st.session_state.item_selecionado_d = None
-            st.rerun()
+        if st.button("➕ Nova Despesa"): 
+            st.session_state.edit_mode_d = "novo"; st.session_state.item_selecionado_d = None; st.rerun()
 
     df_d = get_data(ws_des)
     if not df_d.empty:
         df_d['dt_dt'] = pd.to_datetime(df_d['data'])
-        df_fd = df_d[(df_d['dt_dt'].dt.month == m) & (df_d['dt_dt'].dt.year == a)].copy()
-        df_fd = df_fd.sort_values(by='dt_dt', ascending=False)
-
-        h_cols = st.columns([1, 2, 4, 2, 1, 1])
-        headers = ["ID", "Data", "Descrição", "Valor", "Edit", "Del"]
-        for col, h in zip(h_cols, headers): col.write(f"**{h}**")
-        st.divider()
-
+        df_fd = df_d[(df_d['dt_dt'].dt.month == m) & (df_d['dt_dt'].dt.year == a)].copy().sort_values(by='dt_dt', ascending=False)
+        st.markdown("---")
         for _, row in df_fd.iterrows():
-            cols = st.columns([1, 2, 4, 2, 1, 1])
-            cols[0].write(f"`{str(row['id'])[-4:]}`")
+            cols = st.columns([1, 2, 4, 2, 0.5, 0.5])
             cols[1].write(pd.to_datetime(row['data']).strftime('%d/%m/%Y'))
             cols[2].write(row['descricao'])
             cols[3].write(f"R$ {row['valor']:,.2f}")
-            if cols[4].button("📝", key=f"ed_d_{row['id']}"):
-                st.session_state.edit_mode_d = "editar"
-                st.session_state.item_selecionado_d = row
-                st.rerun()
-            if cols[5].button("🗑️", key=f"del_d_{row['id']}"):
-                delete_by_id(ws_des, row['id'])
-                st.rerun()
+            if cols[4].button("📝", key=f"ed_{row['id']}"):
+                st.session_state.edit_mode_d = "editar"; st.session_state.item_selecionado_d = row; st.rerun()
+            if cols[5].button("🗑️", key=f"dd_{row['id']}"): delete_by_id(ws_des, row['id']); st.rerun()
 
 elif menu == "📅 Calendário":
     st.title("Mapa de Ocupação")
