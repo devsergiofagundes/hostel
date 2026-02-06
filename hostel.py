@@ -114,14 +114,12 @@ if menu == "💰 Dashboard":
 
     liquido = bruto - taxas - operacionais
 
-    # --- MÉTRICAS TOTAIS ---
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("BRUTO TOTAL (MÊS)", f"R$ {bruto:,.2f}")
     c2.metric("TAXAS TOTAIS", f"R$ {taxas:,.2f}")
     c3.metric("DESPESAS TOTAIS", f"R$ {operacionais:,.2f}")
     c4.metric("LUCRO ESTIMADO", f"R$ {liquido:,.2f}")
 
-    # --- GRÁFICOS RESTAURADOS ---
     st.markdown("---")
     cg1, cg2 = st.columns(2)
     with cg1:
@@ -130,39 +128,12 @@ if menu == "💰 Dashboard":
             df_plot = df_mes_r.copy()
             df_plot['quarto'] = df_plot['quarto'].astype(str).str.split(', ')
             st.bar_chart(df_plot.explode('quarto').groupby('quarto')['total'].count())
-        else: st.info("Sem reservas para o período.")
     
     with cg2:
         st.subheader("Divisão Financeira (Mês)")
         if bruto > 0:
-            fin_data = pd.DataFrame({
-                "Categoria": ["Taxas", "Despesas", "Lucro"],
-                "Valor": [taxas, operacionais, max(0, liquido)]
-            })
+            fin_data = pd.DataFrame({"Categoria": ["Taxas", "Despesas", "Lucro"], "Valor": [taxas, operacionais, max(0, liquido)]})
             st.bar_chart(fin_data.set_index("Categoria"))
-        else: st.info("Sem dados financeiros.")
-
-    # --- MÉTRICAS ATÉ HOJE ---
-    st.markdown("---")
-    st.subheader(f"Realizado: 01/{m:02d} até {date.today().strftime('%d/%m/%Y')}")
-    
-    hoje = date.today()
-    br_h, tx_h, op_h = 0.0, 0.0, 0.0
-
-    if not df_mes_r.empty:
-        df_h_r = df_mes_r[df_mes_r['en_dt'].dt.date <= hoje]
-        br_h = df_h_r['total'].sum()
-        tx_h = (df_h_r[df_h_r['origem'] == 'Booking']['total'].sum() * 0.18) + (df_h_r[df_h_r['origem'].isin(['Telefone', 'Whatsapp'])]['total'].sum() * 0.05)
-
-    if not df_d.empty:
-        df_h_d = df_d[(df_d['dt_dt'].dt.month == m) & (df_d['dt_dt'].dt.year == a) & (df_d['dt_dt'].dt.date <= hoje)]
-        op_h = df_h_d['valor'].sum()
-
-    ch1, ch2, ch3, ch4 = st.columns(4)
-    ch1.metric("BRUTO ATÉ HOJE", f"R$ {br_h:,.2f}")
-    ch2.metric("TAXAS ATÉ HOJE", f"R$ {tx_h:,.2f}")
-    ch3.metric("DESPESAS ATÉ HOJE", f"R$ {op_h:,.2f}")
-    ch4.metric("LUCRO ATÉ HOJE", f"R$ {(br_h - tx_h - op_h):,.2f}")
 
 elif menu == "📋 Reservas":
     st.title("Gestão de Reservas")
@@ -171,7 +142,6 @@ elif menu == "📋 Reservas":
     if "edit_mode" in st.session_state and st.session_state.edit_mode:
         with st.container(border=True):
             mode, data = st.session_state.edit_mode, st.session_state.item_selecionado
-            st.subheader("📝 Editar" if mode == "editar" else "➕ Nova Reserva")
             with st.form("form_r"):
                 c1, c2, c3 = st.columns([2, 1, 1])
                 nome = c1.text_input("Nome", value=data['nome'] if data is not None else "")
@@ -198,9 +168,16 @@ elif menu == "📋 Reservas":
     if not df_r.empty:
         df_r['en_dt'] = pd.to_datetime(df_r['entrada'])
         df_f = df_r[(df_r['en_dt'].dt.month == m) & (df_r['en_dt'].dt.year == a)].copy().sort_values(by='en_dt', ascending=False)
+        
         st.markdown("---")
+        # CABEÇALHO DA LISTAGEM DE RESERVAS
+        h_cols = st.columns([0.8, 3, 2, 2, 1.5, 0.6, 0.6])
+        labels = ["ID", "Hóspede", "Entrada", "Quarto", "Total", "Edit", "Del"]
+        for col, label in zip(h_cols, labels): col.markdown(f"**{label}**")
+        st.divider()
+
         for _, row in df_f.iterrows():
-            cols = st.columns([0.5, 3, 2, 2, 1.5, 0.5, 0.5])
+            cols = st.columns([0.8, 3, 2, 2, 1.5, 0.6, 0.6])
             cols[0].write(f"`{str(row['id'])[-4:]}`")
             cols[1].write(row['nome'])
             cols[2].write(pd.to_datetime(row['entrada']).strftime('%d/%m/%Y'))
@@ -236,9 +213,17 @@ elif menu == "💸 Despesas":
     if not df_d.empty:
         df_d['dt_dt'] = pd.to_datetime(df_d['data'])
         df_fd = df_d[(df_d['dt_dt'].dt.month == m) & (df_d['dt_dt'].dt.year == a)].copy().sort_values(by='dt_dt', ascending=False)
+        
         st.markdown("---")
+        # CABEÇALHO DA LISTAGEM DE DESPESAS
+        h_cols_d = st.columns([1, 2, 4, 2, 0.6, 0.6])
+        labels_d = ["ID", "Data", "Descrição", "Valor", "Edit", "Del"]
+        for col, label in zip(h_cols_d, labels_d): col.markdown(f"**{label}**")
+        st.divider()
+
         for _, row in df_fd.iterrows():
-            cols = st.columns([1, 2, 4, 2, 0.5, 0.5])
+            cols = st.columns([1, 2, 4, 2, 0.6, 0.6])
+            cols[0].write(f"`{str(row['id'])[-4:]}`")
             cols[1].write(pd.to_datetime(row['data']).strftime('%d/%m/%Y'))
             cols[2].write(row['descricao'])
             cols[3].write(f"R$ {row['valor']:,.2f}")
