@@ -28,7 +28,7 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- 3. CONEXÃO E CACHE ---
+# --- 3. CONEXÃO E CACHE (PROTEÇÃO CONTRA ERRO 429) ---
 @st.cache_resource
 def init_connection():
     try:
@@ -45,13 +45,16 @@ client = init_connection()
 
 @st.cache_data(ttl=60)
 def get_data_cached(sheet_name):
-    spreadsheet = client.open("hostel-db")
-    ws = spreadsheet.worksheet(sheet_name)
-    data = ws.get_all_records()
-    if not data: return pd.DataFrame()
-    df = pd.DataFrame(data)
-    df.columns = df.columns.str.strip().str.lower().str.normalize('NFKD').str.encode('ascii', errors='ignore').str.decode('utf-8')
-    return df
+    try:
+        spreadsheet = client.open("hostel-db")
+        ws = spreadsheet.worksheet(sheet_name)
+        data = ws.get_all_records()
+        if not data: return pd.DataFrame()
+        df = pd.DataFrame(data)
+        df.columns = df.columns.str.strip().str.lower().str.normalize('NFKD').str.encode('ascii', errors='ignore').str.decode('utf-8')
+        return df
+    except Exception as e:
+        st.error(f"Erro ao ler dados: {e}"); return pd.DataFrame()
 
 def refresh_data():
     st.cache_data.clear()
@@ -93,7 +96,7 @@ def calcular_taxa_reserva(row):
     taxa_pgto = taxas_financeiras.get(forma, 0.0)
     return total * (taxa_origem + taxa_pgto)
 
-# --- 5. NAVEGAÇÃO ---
+# --- 5. ESTADO E NAVEGAÇÃO ---
 if "data_filtro" not in st.session_state:
     st.session_state.data_filtro = datetime.now().replace(day=1)
 
@@ -161,6 +164,26 @@ if menu == "💰 Dashboard":
     ch3.metric("DESPESAS PAGAS", f"R$ {operacionais_h:,.2f}")
     ch4.metric("LUCRO REAL", f"R$ {(bruto_h - taxas_h - operacionais_h):,.2f}")
 
+    st.markdown("---")
+    cg1, cg2 = st.columns(2)
+    with cg1:
+        st.subheader("🏨 Ocupação por Quarto")
+        if not df_mes_r.empty:
+            df_plot = df_mes_r.copy()
+            df_plot['quarto'] = df_plot['quarto'].astype(str).str.split(', ')
+            counts = df_plot.explode('quarto').groupby('quarto').size()
+            st.bar_chart(counts, color="#4318FF")
+        else: st.info("Sem reservas neste período.")
+    with cg2:
+        st.subheader("💰 Divisão Financeira (Mês)")
+        if bruto_p > 0:
+            df_fin = pd.DataFrame({
+                "Categoria": ["Taxas", "Despesas", "Lucro"],
+                "Valores": [taxas_p, operacionais_p, max(0, bruto_p-taxas_p-operacionais_p)]
+            }).set_index("Categoria")
+            st.bar_chart(df_fin, color="#00C805")
+        else: st.info("Sem dados financeiros.")
+
 elif menu == "📋 Reservas":
     st.title("Gestão de Reservas")
     seletor_periodo()
@@ -173,13 +196,13 @@ elif menu == "📋 Reservas":
                 nome = c1.text_input("Nome", value=data['nome'] if data is not None else "")
                 hosp = c2.number_input("Hóspedes", min_value=1, value=int(data['hospedes']) if data is not None else 1)
                 
-                lista_orig = ["Booking", "Telefone", "Whatsapp"]
-                idx_orig = lista_orig.index(data['origem']) if data is not None and data['origem'] in lista_orig else 0
-                orig = c3.selectbox("Origem", lista_orig, index=idx_orig)
+                l_orig = ["Booking", "Telefone", "Whatsapp"]
+                idx_orig = l_orig.index(data['origem']) if data is not None and data['origem'] in l_orig else 0
+                orig = c3.selectbox("Origem", l_orig, index=idx_orig)
                 
-                lista_pgto = ["PIX", "Dinheiro", "Credito", "Debito"]
-                idx_pgto = lista_pgto.index(data['forma_pgto']) if data is not None and data['forma_pgto'] in lista_pgto else 0
-                pgto = c4.selectbox("Pagamento", lista_pgto, index=idx_pgto)
+                l_pgto = ["PIX", "Dinheiro", "Credito", "Debito"]
+                idx_pgto = l_pgto.index(data['forma_pgto']) if data is not None and data['forma_pgto'] in l_pgto else 0
+                pgto = c4.selectbox("Pagamento", l_pgto, index=idx_pgto)
                 
                 c5, c6, c7, c8 = st.columns(4)
                 q_def = str(data['quarto']).split(", ") if data is not None else ["Master"]
