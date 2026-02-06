@@ -169,140 +169,137 @@ if menu == "💰 Dashboard":
 elif menu == "📋 Reservas":
     st.title("Gestão de Reservas")
     seletor_periodo()
-    df_r = get_data(ws_res)
     
+    if st.button("➕ Nova Reserva"):
+        st.session_state.edit_mode = "novo"
+        st.session_state.item_selecionado = None
+
+    df_r = get_data(ws_res)
     if not df_r.empty:
         df_r['en_dt'] = pd.to_datetime(df_r['entrada'])
         df_f = df_r[(df_r['en_dt'].dt.month == m) & (df_r['en_dt'].dt.year == a)].copy()
         df_f = df_f.sort_values(by='en_dt', ascending=False)
-        # Adiciona coluna de seleção (não salva no banco)
-        df_f.insert(0, "Selecionar", False)
-    else:
-        df_f = pd.DataFrame()
+        
+        st.markdown("### Listagem de Reservas")
+        # Header da tabela customizada
+        h_cols = st.columns([1, 3, 2, 2, 2, 1, 1])
+        h_cols[0].write("**ID**")
+        h_cols[1].write("**Nome**")
+        h_cols[2].write("**Entrada**")
+        h_cols[3].write("**Quarto**")
+        h_cols[4].write("**Total**")
+        h_cols[5].write("**✏️**")
+        h_cols[6].write("**🗑️**")
+        st.divider()
 
-    st.info("💡 Marque a caixa na primeira coluna para Editar ou Apagar o registro.")
-    
-    # Substituição do on_select (Streamlit 1.35+) por data_editor (Mais estável)
-    edited_df = st.data_editor(
-        df_f.drop(columns=['en_dt']),
-        use_container_width=True,
-        hide_index=True,
-        disabled=["id", "nome", "hospedes", "quarto", "entrada", "saida", "dias", "total", "origem"]
-    )
-
-    # Identifica a linha selecionada pelo checkbox
-    selected_rows = edited_df[edited_df["Selecionar"] == True]
-    res_data = selected_rows.iloc[0] if not selected_rows.empty else None
-
-    t1, t2, t3 = st.tabs(["➕ Nova", "✏️ Editar Selecionada", "🗑️ Apagar Selecionada"])
-    
-    with t1:
-        with st.form("add_r"):
-            nome = st.text_input("Nome do Hóspede")
-            hospedes = st.number_input("Hóspedes", min_value=1, value=1)
-            q_sel = st.multiselect("Quartos", ["Master", "Studio", "Triplo"], ["Master"])
-            en, sa = st.columns(2)
-            ent, sai = en.date_input("Check-in"), sa.date_input("Check-out")
-            origem = st.selectbox("Origem", ["Booking", "Telefone", "Whatsapp"])
-            val = st.number_input("Valor Total R$", 0.0)
-            if st.form_submit_button("Salvar Reserva"):
-                ws_res.append_row([
-                    int(datetime.now().timestamp()), nome, hospedes, ", ".join(q_sel), 
-                    str(ent), str(sai), (sai-ent).days, val, origem
-                ])
+        for idx, row in df_f.iterrows():
+            cols = st.columns([1, 3, 2, 2, 2, 1, 1])
+            cols[0].write(f"`{row['id']}`")
+            cols[1].write(row['nome'])
+            cols[2].write(pd.to_datetime(row['entrada']).strftime('%d/%m/%Y'))
+            cols[3].write(row['quarto'])
+            cols[4].write(f"R$ {row['total']:,.2f}")
+            
+            if cols[5].button("📝", key=f"ed_{row['id']}"):
+                st.session_state.edit_mode = "editar"
+                st.session_state.item_selecionado = row
+            
+            if cols[6].button("🗑️", key=f"del_{row['id']}"):
+                delete_by_id(ws_res, row['id'])
                 st.rerun()
 
-    with t2:
-        if res_data is not None:
-            with st.form("edit_r_form"):
-                st.write(f"Editando ID: {res_data['id']}")
-                nome_e = st.text_input("Nome", value=res_data['nome'])
-                h_e = st.number_input("Hóspedes", min_value=1, value=int(res_data.get('hospedes', 1)))
-                q_atual = str(res_data['quarto']).split(", ")
-                q_e = st.multiselect("Quartos", ["Master", "Studio", "Triplo"], q_atual)
-                en_e, sa_e = st.columns(2)
-                ent_e = en_e.date_input("In", value=pd.to_datetime(res_data['entrada']))
-                sai_e = sa_e.date_input("Out", value=pd.to_datetime(res_data['saida']))
-                
-                lista_origens = ["Booking", "Telefone", "Whatsapp"]
-                origem_atual = res_data.get('origem', "Booking")
-                idx_origem = lista_origens.index(origem_atual) if origem_atual in lista_origens else 0
-                
-                origem_e = st.selectbox("Origem", lista_origens, index=idx_origem)
-                val_e = st.number_input("Valor", value=float(res_data['total']))
-                
-                if st.form_submit_button("Atualizar Dados"):
-                    new_row = [int(res_data['id']), nome_e, h_e, ", ".join(q_e), str(ent_e), str(sai_e), (sai_e-ent_e).days, val_e, origem_e]
-                    update_row(ws_res, res_data['id'], new_row)
-                    st.rerun()
-        else:
-            st.warning("Marque o checkbox de uma reserva para editar.")
+    # Modal de Edição/Criação simulado
+    if "edit_mode" in st.session_state and st.session_state.edit_mode:
+        with st.sidebar.expander("FORMULÁRIO DE RESERVA", expanded=True):
+            mode = st.session_state.edit_mode
+            data = st.session_state.item_selecionado
+            
+            with st.form("form_r"):
+                st.subheader("Editar" if mode == "editar" else "Nova Reserva")
+                nome_f = st.text_input("Nome", value=data['nome'] if data is not None else "")
+                hosp_f = st.number_input("Hóspedes", min_value=1, value=int(data['hospedes']) if data is not None else 1)
+                q_atual = str(data['quarto']).split(", ") if data is not None else ["Master"]
+                q_f = st.multiselect("Quartos", ["Master", "Studio", "Triplo"], q_atual)
+                ent_f = st.date_input("In", value=pd.to_datetime(data['entrada']) if data is not None else date.today())
+                sai_f = st.date_input("Out", value=pd.to_datetime(data['saida']) if data is not None else date.today())
+                val_f = st.number_input("Valor", value=float(data['total']) if data is not None else 0.0)
+                orig_f = st.selectbox("Origem", ["Booking", "Telefone", "Whatsapp"], index=0)
 
-    with t3:
-        if res_data is not None:
-            st.warning(f"Tem certeza que deseja apagar a reserva de {res_data['nome']}?")
-            if st.button("CONFIRMAR EXCLUSÃO"):
-                delete_by_id(ws_res, res_data['id']); st.rerun()
-        else:
-            st.warning("Marque o checkbox de uma reserva para apagar.")
+                if st.form_submit_button("SALVAR"):
+                    new_data = [int(data['id']) if mode == "editar" else int(datetime.now().timestamp()), 
+                                nome_f, hosp_f, ", ".join(q_f), str(ent_f), str(sai_f), (sai_f-ent_f).days, val_f, orig_f]
+                    if mode == "editar":
+                        update_row(ws_res, data['id'], new_data)
+                    else:
+                        ws_res.append_row(new_data)
+                    st.session_state.edit_mode = None
+                    st.rerun()
+                if st.form_submit_button("CANCELAR"):
+                    st.session_state.edit_mode = None
+                    st.rerun()
 
 elif menu == "💸 Despesas":
     st.title("Gestão de Despesas")
     seletor_periodo()
-    df_d = get_data(ws_des)
     
+    if st.button("➕ Nova Despesa"):
+        st.session_state.edit_mode_d = "novo"
+        st.session_state.item_selecionado_d = None
+
+    df_d = get_data(ws_des)
     if not df_d.empty:
         df_d['dt_dt'] = pd.to_datetime(df_d['data'])
         df_fd = df_d[(df_d['dt_dt'].dt.month == m) & (df_d['dt_dt'].dt.year == a)].copy()
         df_fd = df_fd.sort_values(by='dt_dt', ascending=False)
-        df_fd.insert(0, "Selecionar", False)
-    else:
-        df_fd = pd.DataFrame()
 
-    st.info("💡 Marque a caixa na primeira coluna para Editar ou Apagar o registro.")
+        st.markdown("### Listagem de Despesas")
+        h_cols = st.columns([1, 2, 4, 2, 1, 1])
+        h_cols[0].write("**ID**")
+        h_cols[1].write("**Data**")
+        h_cols[2].write("**Descrição**")
+        h_cols[3].write("**Valor**")
+        h_cols[4].write("**✏️**")
+        h_cols[5].write("**🗑️**")
+        st.divider()
 
-    edited_df_d = st.data_editor(
-        df_fd.drop(columns=['dt_dt']), 
-        use_container_width=True, 
-        hide_index=True,
-        disabled=["id", "data", "descricao", "valor"]
-    )
-
-    selected_rows_d = edited_df_d[edited_df_d["Selecionar"] == True]
-    des_data = selected_rows_d.iloc[0] if not selected_rows_d.empty else None
-
-    t1, t2, t3 = st.tabs(["➕ Nova", "✏️ Editar Selecionada", "🗑️ Apagar Selecionada"])
-    
-    with t1:
-        with st.form("add_d"):
-            dt = st.date_input("Data")
-            ds = st.text_input("Descrição")
-            vl = st.number_input("Valor R$", 0.0)
-            if st.form_submit_button("Lançar"):
-                ws_des.append_row([int(datetime.now().timestamp()), str(dt), ds, vl])
+        for idx, row in df_fd.iterrows():
+            cols = st.columns([1, 2, 4, 2, 1, 1])
+            cols[0].write(f"`{row['id']}`")
+            cols[1].write(pd.to_datetime(row['data']).strftime('%d/%m/%Y'))
+            cols[2].write(row['descricao'])
+            cols[3].write(f"R$ {row['valor']:,.2f}")
+            
+            if cols[4].button("📝", key=f"ed_d_{row['id']}"):
+                st.session_state.edit_mode_d = "editar"
+                st.session_state.item_selecionado_d = row
+            
+            if cols[5].button("🗑️", key=f"del_d_{row['id']}"):
+                delete_by_id(ws_des, row['id'])
                 st.rerun()
 
-    with t2:
-        if des_data is not None:
-            with st.form("edit_d_form"):
-                st.write(f"Editando ID: {des_data['id']}")
-                dt_e = st.date_input("Data", value=pd.to_datetime(des_data['data']))
-                ds_e = st.text_input("Descrição", value=des_data['descricao'])
-                vl_e = st.number_input("Valor", value=float(des_data['valor']))
-                if st.form_submit_button("Atualizar"):
-                    row_idx = df_d[df_d["id"] == des_data['id']].index[0] + 2
-                    ws_des.update(f'A{row_idx}:D{row_idx}', [[int(des_data['id']), str(dt_e), ds_e, vl_e]])
+    if "edit_mode_d" in st.session_state and st.session_state.edit_mode_d:
+        with st.sidebar.expander("FORMULÁRIO DE DESPESA", expanded=True):
+            mode = st.session_state.edit_mode_d
+            data = st.session_state.item_selecionado_d
+            with st.form("form_d"):
+                dt_f = st.date_input("Data", value=pd.to_datetime(data['data']) if data is not None else date.today())
+                desc_f = st.text_input("Descrição", value=data['descricao'] if data is not None else "")
+                val_f = st.number_input("Valor", value=float(data['valor']) if data is not None else 0.0)
+                
+                if st.form_submit_button("SALVAR"):
+                    row_id = data['id'] if mode == "editar" else int(datetime.now().timestamp())
+                    new_row = [row_id, str(dt_f), desc_f, val_f]
+                    if mode == "editar":
+                        # Busca o índice real na planilha via ID
+                        r_idx = df_d[df_d["id"] == row_id].index[0] + 2
+                        ws_des.update(f'A{r_idx}:D{r_idx}', [new_row])
+                    else:
+                        ws_des.append_row(new_row)
+                    st.session_state.edit_mode_d = None
                     st.rerun()
-        else:
-            st.warning("Marque o checkbox de uma despesa para editar.")
-
-    with t3:
-        if des_data is not None:
-            st.warning(f"Tem certeza que deseja apagar a despesa: {des_data['descricao']}?")
-            if st.button("CONFIRMAR EXCLUSÃO"):
-                delete_by_id(ws_des, des_data['id']); st.rerun()
-        else:
-            st.warning("Marque o checkbox de uma despesa para apagar.")
+                if st.form_submit_button("CANCELAR"):
+                    st.session_state.edit_mode_d = None
+                    st.rerun()
 
 elif menu == "📅 Calendário":
     st.title("Mapa de Ocupação")
